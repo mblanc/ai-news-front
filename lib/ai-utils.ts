@@ -6,10 +6,6 @@ import TurndownService from 'turndown';
 const LOCATION = process.env.GOOGLE_CLOUD_LOCATION
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID
 
-if (!LOCATION || !PROJECT_ID) {
-    throw new Error("GOOGLE_CLOUD_LOCATION and GOOGLE_CLOUD_PROJECT_ID must be set.");
-}
-
 const ai = new GoogleGenAI({ vertexai: true, project: PROJECT_ID, location: LOCATION });
 
 export interface ExtractedContent {

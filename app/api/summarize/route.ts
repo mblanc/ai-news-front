@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 
     const prompt = `Summarize the following AI news articles. Focus on key trends, important developments, and emerging themes. Keep it concise but informative:\n\n${articlesText}`
 
-    const text = await generateContent(prompt, 'gemini-2.5-flash', 500)
+    const text = await generateContent(prompt, { urlContext: false })
 
     return Response.json({ summary: text })
   } catch (error) {
