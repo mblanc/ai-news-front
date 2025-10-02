@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -47,6 +47,25 @@ export function SummaryDialog({ news, open, onOpenChange }: SummaryDialogProps) 
     }
   }
 
+  // ADDED: Use useEffect to detect when the dialog opens or closes
+  useEffect(() => {
+    if (open) {
+      // If opened, and we have news but no summary, generate it
+      if (news && !summary && !isLoading) {
+        console.log("Dialog opened, generating summary...")
+        generateSummary()
+      }
+    } else {
+      // If closed, reset the state for the next time
+      console.log("Dialog closed, resetting state...")
+      setSummary("")
+      setError("")
+      setIsLoading(false)
+    }
+    // We only want this effect to run when 'open' changes, or if the 'news' item changes while open
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, news])
+
   const formatDate = (timestamp: any) => {
     if (timestamp?.seconds) {
       return new Date(timestamp.seconds * 1000).toLocaleDateString("en-US", {
@@ -58,34 +77,26 @@ export function SummaryDialog({ news, open, onOpenChange }: SummaryDialogProps) 
     return "Unknown date"
   }
 
-  // Reset state when dialog opens/closes
-  const handleOpenChange = (newOpen: boolean) => {
-    if (!newOpen) {
-      setSummary("")
-      setError("")
-    } else if (news && !summary && !isLoading) {
-      generateSummary()
-    }
-    onOpenChange(newOpen)
-  }
-
   if (!news) return null
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    // MODIFIED: We can now pass the parent's onOpenChange directly
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-playfair text-xl leading-tight pr-8">{news.title}</DialogTitle>
-          <DialogDescription className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-1">
-              <Globe className="h-3 w-3" />
-              <Badge variant="secondary" className="text-xs">
-                {news.domain}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              <span>{formatDate(news.date)}</span>
+          <DialogDescription asChild>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1.5">
+              <div className="flex items-center gap-1">
+                <Globe className="h-3 w-3" />
+                <Badge variant="secondary" className="text-xs">
+                  {news.domain}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                <span>{formatDate(news.date)}</span>
+              </div>
             </div>
           </DialogDescription>
         </DialogHeader>

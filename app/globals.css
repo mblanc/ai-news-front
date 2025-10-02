@@ -5,7 +5,7 @@
 
 :root {
   /* Updated design tokens to match the AI news app design brief */
-  --background: #ffffff;
+  --background: #F8F9FA;
   --foreground: #475569;
   --card: #ffffff;
   --card-foreground: #164e63;
@@ -22,7 +22,7 @@
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
   --border: #ebf1f2;
-  --input: #fefce8;
+  --input: #ffffff;
   --ring: rgba(22, 78, 99, 0.5);
   --chart-1: #164e63;
   --chart-2: #f59e0b;
