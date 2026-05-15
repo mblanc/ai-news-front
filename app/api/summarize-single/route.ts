@@ -11,17 +11,29 @@ export async function POST(req: Request) {
     console.log(article)
 
 
-    const prompt = `Provide a concise summary of this AI news article. Focus on the key points, implications, and significance:
+    const sanitize = (str: string) => str.replace(/[<>"{}]/g, "").trim()
+    const safeTitle = sanitize(article.title)
+    const safeDomain = sanitize(article.domain)
 
-Title: ${article.title}
+    const date = new Date(article.date)
+    const dateStr = isNaN(date.getTime()) ? "" : date.toLocaleDateString()
+
+    const prompt = `Provide a concise summary of the following AI news article. 
+Focus on the key points, implications, and significance.
+
+[ARTICLE_DETAILS]
+Title: ${safeTitle}
 Url: ${article.url}
 Date: ${article.date}
+[/ARTICLE_DETAILS]
 
 Please provide a 2-3 sentence summary that captures the essence of this article.`
 
-    console.log(prompt)
-
     const text = await generateContent(prompt, { urlContext: true });
+
+    if (!text) {
+      return Response.json({ error: "Model returned an empty response" }, { status: 500 })
+    }
 
     return Response.json({ summary: text })
   } catch (error) {

@@ -8,7 +8,6 @@ export function useNewsFilters(news: NewsItem[], filters: FilterOptions, searchQ
   return useMemo(() => {
     let filteredNews = [...news]
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filteredNews = filteredNews.filter(
@@ -16,12 +15,10 @@ export function useNewsFilters(news: NewsItem[], filters: FilterOptions, searchQ
       )
     }
 
-    // Apply domain filter
     if (filters.domain) {
       filteredNews = filteredNews.filter((item) => item.domain === filters.domain)
     }
 
-    // Apply date range filter
     if (filters.dateRange) {
       filteredNews = filteredNews.filter((item) => {
         const itemDate = new Date(item.date)
@@ -29,19 +26,15 @@ export function useNewsFilters(news: NewsItem[], filters: FilterOptions, searchQ
       })
     }
 
-    // Apply sorting
+    const sortValue = filters.sort || "date-desc"
+    const [sortBy, sortOrder] = sortValue.split("-") as ["date" | "domain", "asc" | "desc"]
+
     filteredNews.sort((a, b) => {
-      let comparison = 0
-
-      if (filters.sortBy === "date") {
-        const dateA = new Date(a.date)
-        const dateB = new Date(b.date)
-        comparison = dateA.getTime() - dateB.getTime()
-      } else if (filters.sortBy === "domain") {
-        comparison = a.domain.localeCompare(b.domain)
-      }
-
-      return filters.sortOrder === "desc" ? -comparison : comparison
+      const comparison =
+        sortBy === "domain"
+          ? a.domain.localeCompare(b.domain)
+          : a.date.getTime() - b.date.getTime()
+      return sortOrder === "desc" ? -comparison : comparison
     })
 
     return filteredNews

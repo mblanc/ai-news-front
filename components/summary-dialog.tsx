@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Sparkles, Loader2, ExternalLink, Calendar, Globe } from "lucide-react"
+import { ExternalLink, Loader2 } from "lucide-react"
+import { DomainIcon } from "@/components/domain-icon"
+import { formatDateLong } from "@/lib/format-date"
 import type { NewsItem } from "@/lib/firebase"
 
 interface SummaryDialogProps {
@@ -15,133 +16,132 @@ interface SummaryDialogProps {
 
 export function SummaryDialog({ news, open, onOpenChange }: SummaryDialogProps) {
   const [summary, setSummary] = useState<string>("")
+  const [generatedAt, setGeneratedAt] = useState<string>("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string>("")
 
   const generateSummary = async () => {
     if (!news) return
-
     setIsLoading(true)
     setError("")
-
     try {
       const response = await fetch("/api/summarize-single", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ article: news }),
       })
-
-      if (!response.ok) {
-        throw new Error("Failed to generate summary")
-      }
-
+      if (!response.ok) throw new Error("Failed to generate summary")
       const data = await response.json()
       setSummary(data.summary)
-    } catch (err) {
+      setGeneratedAt(new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }))
+    } catch {
       setError("Failed to generate summary. Please try again.")
-      console.error("Summary error:", err)
     } finally {
       setIsLoading(false)
     }
   }
 
-  // ADDED: Use useEffect to detect when the dialog opens or closes
   useEffect(() => {
-    if (open) {
-      // If opened, and we have news but no summary, generate it
-      if (news && !summary && !isLoading) {
-        console.log("Dialog opened, generating summary...")
-        generateSummary()
-      }
-    } else {
-      // If closed, reset the state for the next time
-      console.log("Dialog closed, resetting state...")
+    if (open && news) {
       setSummary("")
+      setGeneratedAt("")
       setError("")
-      setIsLoading(false)
+      generateSummary()
     }
-    // We only want this effect to run when 'open' changes, or if the 'news' item changes while open
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, news])
+  }, [open, news?.id])
 
-  const formatDate = (timestamp: any) => {
-    if (timestamp?.seconds) {
-      return new Date(timestamp.seconds * 1000).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen) {
+      setSummary("")
+      setGeneratedAt("")
+      setError("")
     }
-    return "Unknown date"
+    onOpenChange(newOpen)
   }
 
   if (!news) return null
 
   return (
-    // MODIFIED: We can now pass the parent's onOpenChange directly
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="font-playfair text-xl leading-tight pr-8">{news.title}</DialogTitle>
-          <DialogDescription asChild>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1.5">
-              <div className="flex items-center gap-1">
-                <Globe className="h-3 w-3" />
-                <Badge variant="secondary" className="text-xs">
-                  {news.domain}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                <span>{formatDate(news.date)}</span>
-              </div>
-            </div>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto border-border bg-background p-0">
+        <DialogHeader className="border-b border-border p-6 pb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <span className="font-sans text-[11px] uppercase tracking-widest text-muted-foreground">
+              Article Summary
+            </span>
+            <span className="font-sans text-[11px] text-muted-foreground flex items-center gap-1">
+              <DomainIcon domain={news.domain} />
+              {news.domain}
+            </span>
+            <span className="font-sans text-[11px] text-muted-foreground">
+              {formatDateLong(news.date)}
+            </span>
+          </div>
+          <DialogTitle className="font-newsreader text-xl leading-tight text-foreground font-normal pr-6">
+            {news.title}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            AI-generated summary of the article from {news.domain}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Article Link */}
-          <Button variant="outline" asChild className="w-full bg-transparent">
-            <a href={news.url} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Read Full Article
-            </a>
-          </Button>
+        <div className="p-6 space-y-5">
+          <a
+            href={news.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 font-sans text-sm text-muted-foreground hover:text-foreground border border-border px-4 py-2.5 bg-card hover:bg-background focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-colors"
+            style={{ borderRadius: 0 }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Read full article
+          </a>
 
-          {/* AI Summary Section */}
-          <div className="border-t pt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles className="h-5 w-5 text-accent" />
-              <h3 className="font-semibold">AI Summary</h3>
-            </div>
+          <div className="border-t border-border pt-5">
+            <span className="font-sans text-[11px] uppercase tracking-widest text-muted-foreground block mb-4">
+              AI Summary
+            </span>
 
             {isLoading && (
-              <div className="text-center py-6">
-                <Loader2 className="h-8 w-8 animate-spin text-accent mx-auto mb-3" />
-                <p className="text-muted-foreground">Generating summary...</p>
+              <div className="flex flex-col items-center py-8 gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <p className="font-sans text-xs text-muted-foreground">Generating summary\u2026</p>
               </div>
             )}
 
-            {error && (
-              <div className="text-center py-6">
-                <div className="text-destructive text-sm mb-3">{error}</div>
-                <Button variant="outline" onClick={generateSummary} size="sm">
-                  Try Again
-                </Button>
+            {error && !isLoading && (
+              <div className="py-4">
+                <p className="font-sans text-xs text-muted-foreground mb-3">{error}</p>
+                <button
+                  type="button"
+                  onClick={generateSummary}
+                  className="font-sans text-xs leading-none px-4 py-2 border border-border bg-background hover:bg-card active:bg-card focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-colors"
+                  style={{ borderRadius: 0 }}
+                >
+                  Try again
+                </button>
               </div>
             )}
 
-            {summary && (
-              <div className="bg-muted/50 rounded-lg p-4 border border-border">
-                <p className="text-foreground leading-relaxed">{summary}</p>
-                <div className="flex justify-between items-center mt-3 pt-3 border-t border-border">
-                  <Button variant="ghost" size="sm" onClick={generateSummary} disabled={isLoading} className="text-xs">
-                    <Sparkles className="h-3 w-3 mr-1" />
+            {summary && !isLoading && (
+              <div className="space-y-4">
+                <div className="border border-border bg-card p-4">
+                  <p className="font-sans text-sm text-foreground leading-relaxed">{summary}</p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={generateSummary}
+                    disabled={isLoading}
+                    className="font-sans text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
                     Regenerate
-                  </Button>
-                  <div className="text-xs text-muted-foreground">Powered by AI</div>
+                  </button>
+                  {generatedAt && (
+                    <span className="font-mono text-xs text-muted-foreground">
+                      Generated {generatedAt}
+                    </span>
+                  )}
                 </div>
               </div>
             )}

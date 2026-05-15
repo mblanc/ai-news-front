@@ -4,75 +4,74 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* Updated design tokens to match the AI news app design brief */
-  --background: #F8F9FA;
-  --foreground: #475569;
-  --card: #ffffff;
-  --card-foreground: #164e63;
-  --popover: #ffffff;
-  --popover-foreground: #475569;
-  --primary: #164e63;
-  --primary-foreground: #ffffff;
-  --secondary: #f59e0b;
-  --secondary-foreground: #ffffff;
-  --muted: #fef2f2;
-  --muted-foreground: #374151;
-  --accent: #f59e0b;
-  --accent-foreground: #164e63;
-  --destructive: #dc2626;
-  --destructive-foreground: #ffffff;
-  --border: #ebf1f2;
-  --input: #ffffff;
-  --ring: rgba(22, 78, 99, 0.5);
-  --chart-1: #164e63;
-  --chart-2: #f59e0b;
-  --chart-3: #dc2626;
-  --chart-4: #475569;
-  --chart-5: #ecfeff;
-  --radius: 0.5rem;
-  --sidebar: #ffffff;
-  --sidebar-foreground: #475569;
-  --sidebar-primary: #164e63;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f59e0b;
-  --sidebar-accent-foreground: #164e63;
-  --sidebar-border: #ecfeff;
-  --sidebar-ring: rgba(22, 78, 99, 0.5);
+  --background: #F4EFE6;
+  --foreground: #1B1816;
+  --card: #EDE6D8;
+  --card-foreground: #1B1816;
+  --popover: #F4EFE6;
+  --popover-foreground: #1B1816;
+  --primary: #1B1816;
+  --primary-foreground: #F4EFE6;
+  --secondary: #EDE6D8;
+  --secondary-foreground: #1B1816;
+  --muted: #EDE6D8;
+  --muted-foreground: #5A524A;
+  --accent: #E5006D;
+  --accent-foreground: #F4EFE6;
+  --destructive: #E5006D;
+  --destructive-foreground: #F4EFE6;
+  --border: #1B1816;
+  --input: #F4EFE6;
+  --ring: #E5006D;
+  --chart-1: #1B1816;
+  --chart-2: #E5006D;
+  --chart-3: #1F6B3A;
+  --chart-4: #5A524A;
+  --chart-5: #9A8F82;
+  --radius: 0rem;
+  --sidebar: #EDE6D8;
+  --sidebar-foreground: #1B1816;
+  --sidebar-primary: #1B1816;
+  --sidebar-primary-foreground: #F4EFE6;
+  --sidebar-accent: #E5006D;
+  --sidebar-accent-foreground: #F4EFE6;
+  --sidebar-border: #1B1816;
+  --sidebar-ring: #E5006D;
 }
 
 .dark {
-  --background: #0f172a;
-  --foreground: #f1f5f9;
-  --card: #1e293b;
-  --card-foreground: #f1f5f9;
-  --popover: #1e293b;
-  --popover-foreground: #f1f5f9;
-  --primary: #0ea5e9;
-  --primary-foreground: #0f172a;
-  --secondary: #f59e0b;
-  --secondary-foreground: #0f172a;
-  --muted: #334155;
-  --muted-foreground: #94a3b8;
-  --accent: #f59e0b;
-  --accent-foreground: #0f172a;
-  --destructive: #ef4444;
-  --destructive-foreground: #f1f5f9;
-  --border: #334155;
-  --input: #334155;
-  --ring: rgba(14, 165, 233, 0.5);
-  --chart-1: #0ea5e9;
-  --chart-2: #f59e0b;
-  --chart-3: #ef4444;
-  --chart-4: #94a3b8;
-  --chart-5: #334155;
-  --sidebar: #1e293b;
-  --sidebar-foreground: #f1f5f9;
-  --sidebar-primary: #0ea5e9;
-  --sidebar-primary-foreground: #f1f5f9;
-  --sidebar-accent: #f59e0b;
-  --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: #334155;
-  --sidebar-ring: rgba(14, 165, 233, 0.5);
+  --background: #F4EFE6;
+  --foreground: #1B1816;
+  --card: #EDE6D8;
+  --card-foreground: #1B1816;
+  --popover: #F4EFE6;
+  --popover-foreground: #1B1816;
+  --primary: #1B1816;
+  --primary-foreground: #F4EFE6;
+  --secondary: #EDE6D8;
+  --secondary-foreground: #1B1816;
+  --muted: #EDE6D8;
+  --muted-foreground: #5A524A;
+  --accent: #E5006D;
+  --accent-foreground: #F4EFE6;
+  --destructive: #E5006D;
+  --destructive-foreground: #F4EFE6;
+  --border: #1B1816;
+  --input: #F4EFE6;
+  --ring: #E5006D;
+  --chart-1: #1B1816;
+  --chart-2: #E5006D;
+  --chart-3: #1F6B3A;
+  --chart-4: #5A524A;
+  --chart-5: #9A8F82;
+  --sidebar: #EDE6D8;
+  --sidebar-foreground: #1B1816;
+  --sidebar-primary: #1B1816;
+  --sidebar-primary-foreground: #F4EFE6;
+  --sidebar-accent: #E5006D;
+  --sidebar-accent-foreground: #F4EFE6;
+  --sidebar-border: #1B1816;
+  --sidebar-ring: #E5006D;
 }
 
 @theme inline {
@@ -122,5 +121,16 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  .font-newsreader {
+    font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

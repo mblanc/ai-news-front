@@ -2,20 +2,15 @@ import type React from "react"
 import type { Metadata } from "next"
 import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
-import { Playfair_Display, Source_Sans_3 } from "next/font/google"
+import { Newsreader } from "next/font/google"
 import "./globals.css"
 import { Suspense } from "react"
 
-const playfairDisplay = Playfair_Display({
+const newsreader = Newsreader({
   subsets: ["latin"],
-  variable: "--font-playfair",
+  variable: "--font-newsreader",
   display: "swap",
-})
-
-const sourceSans = Source_Sans_3({
-  subsets: ["latin"],
-  variable: "--font-source-sans",
-  display: "swap",
+  style: ["normal", "italic"],
 })
 
 export const metadata: Metadata = {
@@ -30,9 +25,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        className={`font-sans ${GeistSans.variable} ${GeistMono.variable} ${playfairDisplay.variable} ${sourceSans.variable}`}
+        className={`font-sans ${GeistSans.variable} ${GeistMono.variable} ${newsreader.variable}`}
+        suppressHydrationWarning
       >
         <Suspense fallback={null}>{children}</Suspense>
       </body>

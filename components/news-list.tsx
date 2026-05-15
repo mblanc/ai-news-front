@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { ExternalLink, Calendar, Globe } from "lucide-react"
+import { useState, useMemo } from "react"
+import { ExternalLink } from "lucide-react"
+import { DomainIcon } from "@/components/domain-icon"
+import { formatDate, formatDateLong } from "@/lib/format-date"
 import type { NewsItem } from "@/lib/firebase"
 import type { FilterOptions } from "@/components/filter-panel"
 
@@ -10,13 +11,14 @@ interface NewsListProps {
   news: NewsItem[]
   onSummarize?: (news: NewsItem) => void
   filters: FilterOptions
+  searchQuery?: string
 }
 
 interface GroupedNews {
   [key: string]: NewsItem[]
 }
 
-export function NewsList({ news, onSummarize, filters }: NewsListProps) {
+export function NewsList({ news, onSummarize, filters, searchQuery }: NewsListProps) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
 
   const handleSummarize = async (newsItem: NewsItem) => {
@@ -28,150 +30,111 @@ export function NewsList({ news, onSummarize, filters }: NewsListProps) {
     }
   }
 
-  const formatDate = (timestamp: any) => {
-    try {
-      const date = new Date(timestamp)
-      if (isNaN(date.getTime())) {
-        return "Unknown date"
-      }
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    } catch (error) {
-      return "Unknown date"
-    }
-  }
-
-  const formatDateForGrouping = (timestamp: any) => {
-    try {
-      const date = new Date(timestamp)
-      if (isNaN(date.getTime())) {
-        return "Unknown date"
-      }
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    } catch (error) {
-      return "Unknown date"
-    }
-  }
+  const [sortBy] = filters.sort.split("-") as ["date" | "domain", "asc" | "desc"]
 
   const groupNewsBySection = (news: NewsItem[]): GroupedNews => {
     const grouped: GroupedNews = {}
-    
     news.forEach((item) => {
-      let sectionKey: string
-      
-      if (filters.sortBy === "domain") {
-        sectionKey = item.domain
-      } else {
-        // Group by date
-        sectionKey = formatDateForGrouping(item.date)
-      }
-      
-      if (!grouped[sectionKey]) {
-        grouped[sectionKey] = []
-      }
-      grouped[sectionKey].push(item)
+      const key = sortBy === "domain" ? item.domain : formatDateLong(item.date)
+      if (!grouped[key]) grouped[key] = []
+      grouped[key].push(item)
     })
-    
     return grouped
   }
 
   const sortSections = (grouped: GroupedNews): string[] => {
-    const sectionKeys = Object.keys(grouped)
-    
-    if (filters.sortBy === "domain") {
-      return sectionKeys.sort((a, b) => {
-        return filters.sortOrder === "asc" ? a.localeCompare(b) : b.localeCompare(a)
-      })
-    } else {
-      // Sort by date
-      return sectionKeys.sort((a, b) => {
-        const dateA = new Date(a)
-        const dateB = new Date(b)
-        return filters.sortOrder === "asc" ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime()
-      })
-    }
+    const [, sortOrder] = filters.sort.split("-") as ["date" | "domain", "asc" | "desc"]
+    return Object.keys(grouped).sort((a, b) => {
+      const cmp = sortBy === "domain" ? a.localeCompare(b) : new Date(a).getTime() - new Date(b).getTime()
+      return sortOrder === "asc" ? cmp : -cmp
+    })
   }
 
   if (news.length === 0) {
     return (
-      <div className="text-center py-12">
-        <div className="text-muted-foreground text-lg">No news articles found</div>
-        <p className="text-sm text-muted-foreground mt-2">Try adjusting your search or filters</p>
+      <div className="border border-border py-16 px-8">
+        <p className="font-sans text-lg text-muted-foreground">
+          {searchQuery ? `No results for \u201c${searchQuery}\u201d` : "No articles match the current filters."}
+        </p>
+        <p className="font-sans text-sm text-muted-foreground mt-2">
+          {searchQuery
+            ? "Try a shorter or broader search term."
+            : "Try adjusting your filters or clearing the date range."}
+        </p>
       </div>
     )
   }
 
-  const groupedNews = groupNewsBySection(news)
-  const sortedSectionKeys = sortSections(groupedNews)
+  const groupedNews = useMemo(() => groupNewsBySection(news), [news, sortBy])
+  const sortedSectionKeys = useMemo(() => sortSections(groupedNews), [groupedNews, filters.sort, sortBy])
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       {sortedSectionKeys.map((sectionKey) => (
-        <div key={sectionKey} className="space-y-4">
-          {/* Section Header */}
-          <div className="border-b border-border pb-2">
-            <h3 className="text-lg font-playfair font-semibold text-foreground">
-              {sectionKey}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {groupedNews[sectionKey].length} article{groupedNews[sectionKey].length !== 1 ? 's' : ''}
-            </p>
+        <div key={sectionKey}>
+          <div className="border-b border-border pb-2 mb-0">
+            {sortBy === "domain" && (
+              <span className="font-sans text-[10px] uppercase tracking-widest text-muted-foreground block mb-0.5">
+                Source
+              </span>
+            )}
+            <div className="flex items-baseline justify-between">
+              <h3 className="font-newsreader text-xl sm:text-2xl text-foreground leading-tight">
+                {sectionKey}
+              </h3>
+              <span className="font-sans text-xs text-muted-foreground">
+                {groupedNews[sectionKey].length} article
+                {groupedNews[sectionKey].length !== 1 ? "s" : ""}
+              </span>
+            </div>
           </div>
 
-          {/* News Items in this Section */}
-          <div className="space-y-3">
+          <div>
             {groupedNews[sectionKey].map((item) => (
               <div
                 key={item.id}
-                className="group flex items-start justify-between p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+                className="group border-b border-border py-4 last:border-b-0"
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-foreground group-hover:text-primary transition-colors line-clamp-2">
-                        {item.title}
-                      </h4>
-                      <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                        <a
-                          href={item.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 hover:text-primary transition-colors"
-                        >
-                          <Globe className="h-3 w-3" />
-                          <span className="underline">{item.domain}</span>
-                        </a>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          <span>{formatDate(item.date)}</span>
-                        </div>
-                      </div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-newsreader text-lg leading-snug text-foreground group-hover:text-muted-foreground transition-colors">
+                      {item.title}
+                    </h4>
+                    <div className="flex items-center gap-4 mt-1.5 font-sans text-xs text-muted-foreground">
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none"
+                      >
+                        <DomainIcon domain={item.domain} />
+                        {item.domain}
+                      </a>
+                      <span>{formatDate(item.date)}</span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-primary">
-                        <a href={item.url} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      </Button>
-                      {onSummarize && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleSummarize(item)}
-                          disabled={loadingId === item.id}
-                          className="text-xs"
-                        >
-                          {loadingId === item.id ? "Summarizing..." : "Summarize"}
-                        </Button>
-                      )}
-                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Open "${item.title}" in new tab`}
+                      className="p-3 text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                    {onSummarize && (
+                      <button
+                        type="button"
+                        onClick={() => handleSummarize(item)}
+                        disabled={loadingId === item.id}
+                        className="font-sans text-xs leading-none px-4 py-2.5 border border-border bg-background hover:bg-card active:bg-card focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        style={{ borderRadius: 0 }}
+                      >
+                        {loadingId === item.id ? "Summarizing\u2026" : "Summarize"}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -182,5 +145,3 @@ export function NewsList({ news, onSummarize, filters }: NewsListProps) {
     </div>
   )
 }
-
-
