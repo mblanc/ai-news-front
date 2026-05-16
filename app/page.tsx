@@ -43,6 +43,7 @@ export default function HomePage() {
   const [error, setError] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [oldestDay, setOldestDay] = useState<Date | null>(null)
+  const [hasMore, setHasMore] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState<FilterOptions>({ sort: "date-desc" })
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -71,13 +72,17 @@ export default function HomePage() {
   }, [])
 
   const loadMore = useCallback(async () => {
-    if (loadingMoreRef.current || !oldestDay) return
+    if (loadingMoreRef.current || !oldestDay || !hasMore) return
     loadingMoreRef.current = true
     setLoadingMore(true)
     try {
       const end = new Date(oldestDay.getTime() - 1)
       const start = dayStart(subtractDays(oldestDay, 1))
       const data = await fetchClustersForRange(start, end)
+      if (data.length === 0) {
+        setHasMore(false)
+        return
+      }
       setClusters((prev) => {
         const existingIds = new Set(prev.map((c) => c.id))
         return [...prev, ...data.filter((c) => !existingIds.has(c.id))]
@@ -89,7 +94,7 @@ export default function HomePage() {
       loadingMoreRef.current = false
       setLoadingMore(false)
     }
-  }, [oldestDay])
+  }, [oldestDay, hasMore])
 
   useEffect(() => {
     initialLoad()

@@ -3,7 +3,7 @@ import { FieldValue } from "@google-cloud/firestore"
 import { JSDOM } from "jsdom"
 import { db } from "@/lib/firebase"
 import { sha256 } from "@/lib/hash"
-import { fetchArticle, HttpError } from "@/lib/scrape"
+import { fetchArticle, HttpError, assertSafeUrl } from "@/lib/scrape"
 import { parseRssFeed } from "@/lib/rss"
 import {
   embed,
@@ -113,6 +113,7 @@ async function resolveSourceUrls(
   }
 
   // page source — try RSS autodiscovery first
+  assertSafeUrl(source.url)
   log(`  Fetching page: ${source.url}`)
   const res = await fetch(source.url, {
     headers: {
@@ -235,7 +236,13 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
   log("Step 3/8 — Deduplicating against existing articles")
   const hashes = uniqueItems.map(({ url }) => sha256(url))
   const refs = hashes.map((h) => db.collection("articles").doc(h))
-  const snaps = await db.getAll(...refs)
+  const BATCH_SIZE = 500
+  const snapBatches = await Promise.all(
+    Array.from({ length: Math.ceil(refs.length / BATCH_SIZE) }, (_, i) =>
+      db.getAll(...refs.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE))
+    )
+  )
+  const snaps = snapBatches.flat()
   const newItems = uniqueItems.filter((_, i) => !snaps[i].exists)
   log(
     `${newItems.length} new URLs to scrape (${uniqueItems.length - newItems.length} already ingested)`
@@ -391,10 +398,14 @@ async function cloakbrowserFetch(url: string): Promise<string | null> {
     const { default: TurndownService } = await import("turndown")
 
     const browser = await launch({ headless: true })
-    const page = await browser.newPage()
-    await page.goto(url, { waitUntil: "domcontentloaded" })
-    const html = await page.content()
-    await browser.close()
+    let html: string
+    try {
+      const page = await browser.newPage()
+      await page.goto(url, { waitUntil: "domcontentloaded" })
+      html = await page.content()
+    } finally {
+      await browser.close()
+    }
 
     const virtualConsole = new VirtualConsole()
     let doc: JSDOM

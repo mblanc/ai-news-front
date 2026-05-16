@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { db, docToSource } from "@/lib/firebase"
 import { FieldValue } from "@google-cloud/firestore"
+import { assertSafeUrl } from "@/lib/scrape"
 import type { SourceType } from "@/lib/types"
 
 function detectType(url: string): SourceType {
@@ -42,6 +43,13 @@ export async function POST(request: NextRequest) {
   }
 
   const { url, name } = result.data
+
+  try {
+    assertSafeUrl(url)
+  } catch {
+    return NextResponse.json({ error: "Disallowed URL" }, { status: 422 })
+  }
+
   const doc = {
     url,
     type: detectType(url),
