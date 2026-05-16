@@ -1,4 +1,4 @@
-export type SourceType = 'rss' | 'page'
+export type SourceType = "rss" | "page"
 
 export interface Source {
   id: string
@@ -10,7 +10,7 @@ export interface Source {
   createdAt: Date
 }
 
-export type ArticleStatus = 'raw' | 'scored' | 'clustered' | 'fetch_failed' | 'discarded'
+export type ArticleStatus = "raw" | "scored" | "clustered" | "fetch_failed" | "discarded"
 
 export interface Article {
   id: string
@@ -26,8 +26,19 @@ export interface Article {
   ingestedAt: Date
 }
 
-export type TopicTag = 'model-release' | 'research' | 'funding' | 'product' | 'policy' | 'other'
-export type Sentiment = 'positive' | 'neutral' | 'negative'
+export type TopicTag =
+  | "model-release"
+  | "research"
+  | "funding"
+  | "product"
+  | "policy"
+  | "industry"
+  | "agents"
+  | "hardware"
+  | "opinion"
+  | "education"
+  | "other"
+export type Sentiment = "positive" | "neutral" | "negative"
 
 export interface ClusterArticle {
   id: string
@@ -48,4 +59,5 @@ export interface Cluster {
   articles: ClusterArticle[]
   articleCount: number
   createdAt: Date
+  publishedAt: Date
 }

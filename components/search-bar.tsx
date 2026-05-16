@@ -10,7 +10,11 @@ interface SearchBarProps {
   defaultValue?: string
 }
 
-export function SearchBar({ onSearch, placeholder = "Search news...", defaultValue = "" }: SearchBarProps) {
+export function SearchBar({
+  onSearch,
+  placeholder = "Search news...",
+  defaultValue = "",
+}: SearchBarProps) {
   const [query, setQuery] = useState(defaultValue)
 
   const handleSubmit = (e: React.FormEvent) => {

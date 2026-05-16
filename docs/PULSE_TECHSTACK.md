@@ -125,14 +125,14 @@ pulse/
 
 **Toolchain:**
 
-| Tool | Version | Purpose |
-|------|---------|---------|
-| pnpm | 9.x | Package manager |
-| Turborepo | 2.x | Monorepo task graph |
-| TypeScript | 5.5+ | Strict mode everywhere |
-| ESLint | Flat config | Linting |
-| Prettier | 3.x | Formatting |
-| Vitest | 2.x | Unit + integration tests |
+| Tool       | Version     | Purpose                  |
+| ---------- | ----------- | ------------------------ |
+| pnpm       | 9.x         | Package manager          |
+| Turborepo  | 2.x         | Monorepo task graph      |
+| TypeScript | 5.5+        | Strict mode everywhere   |
+| ESLint     | Flat config | Linting                  |
+| Prettier   | 3.x         | Formatting               |
+| Vitest     | 2.x         | Unit + integration tests |
 
 ---
 
@@ -198,11 +198,11 @@ Single service for the entire product. HTTP requests (web + tasks + scheduler + 
 
 ### Cloud Tasks queues
 
-| Queue | Rate | Retries | Purpose |
-|-------|------|---------|---------|
-| `pulse-ingest` | 10 rps / 5 concurrent | 5 × exponential backoff | Fetch articles from sources |
-| `pulse-process` | 20 rps / 10 concurrent | 3 × backoff | Score, embed, cluster |
-| `pulse-fanout` | 50 rps / 20 concurrent | 3 | Write feed items + webhooks |
+| Queue           | Rate                   | Retries                 | Purpose                     |
+| --------------- | ---------------------- | ----------------------- | --------------------------- |
+| `pulse-ingest`  | 10 rps / 5 concurrent  | 5 × exponential backoff | Fetch articles from sources |
+| `pulse-process` | 20 rps / 10 concurrent | 3 × backoff             | Score, embed, cluster       |
+| `pulse-fanout`  | 50 rps / 20 concurrent | 3                       | Write feed items + webhooks |
 
 All tasks are HTTP pushes to `/api/tasks/*` on the same Cloud Run service, authenticated via OIDC token.
 
@@ -213,12 +213,12 @@ All tasks are HTTP pushes to `/api/tasks/*` on the same Cloud Run service, authe
 
 ### Cloud Scheduler
 
-| Job | Schedule (UTC) | Target |
-|-----|---------------|--------|
-| ingest-hourly | `0 * * * *` | `/api/schedule/ingest` |
-| ingest-daily | `0 6 * * *` | `/api/schedule/ingest` |
-| digest-morning | `30 7 * * *` | `/api/schedule/digest` |
-| obsidian-sync | `0 1 * * *` | `/api/schedule/obsidian` |
+| Job            | Schedule (UTC) | Target                   |
+| -------------- | -------------- | ------------------------ |
+| ingest-hourly  | `0 * * * *`    | `/api/schedule/ingest`   |
+| ingest-daily   | `0 6 * * *`    | `/api/schedule/ingest`   |
+| digest-morning | `30 7 * * *`   | `/api/schedule/digest`   |
+| obsidian-sync  | `0 1 * * *`    | `/api/schedule/obsidian` |
 
 ### Secret Manager
 
@@ -230,12 +230,12 @@ All secrets (Firebase service account key, Stripe keys, API keys, auth cookie se
 
 ### Source adapters (`packages/scraping`)
 
-| Source type | Adapter |
-|-------------|---------|
-| `rss` | `rss-parser` → parse feed items |
-| `scrape` | Firecrawl → JS-rendered site → Markdown |
-| `reddit`, `x`, `tiktok`, `ig` | ScrapeCreators API |
-| `search` | Exa AI semantic web search |
+| Source type                   | Adapter                                 |
+| ----------------------------- | --------------------------------------- |
+| `rss`                         | `rss-parser` → parse feed items         |
+| `scrape`                      | Firecrawl → JS-rendered site → Markdown |
+| `reddit`, `x`, `tiktok`, `ig` | ScrapeCreators API                      |
+| `search`                      | Exa AI semantic web search              |
 
 ### Ingest task handler (`/api/tasks/ingest`)
 
@@ -258,11 +258,11 @@ Returns `200` on success (Cloud Tasks deletes the task). Returns `500` on failur
 
 ### AI clients (`packages/ai`)
 
-| Model | Purpose | Provider |
-|-------|---------|---------|
-| `text-embedding-004` | 768-dim article embeddings | Vertex AI |
-| `claude-haiku-4-5` | Relevance scoring (0–10) | Vertex AI (Anthropic) |
-| `claude-sonnet-4-6` | Cluster summarisation → JSON | Vertex AI (Anthropic) |
+| Model                | Purpose                      | Provider              |
+| -------------------- | ---------------------------- | --------------------- |
+| `text-embedding-004` | 768-dim article embeddings   | Vertex AI             |
+| `claude-haiku-4-5`   | Relevance scoring (0–10)     | Vertex AI (Anthropic) |
+| `claude-sonnet-4-6`  | Cluster summarisation → JSON | Vertex AI (Anthropic) |
 
 ### Process task handler (`/api/tasks/process`)
 
@@ -308,6 +308,7 @@ POST { window: 'daily' | 'weekly' }
 ### Obsidian Sync
 
 Nightly job (01:00 UTC) per user with `delivery=['obsidian']`:
+
 - Fetches yesterday's clusters for all subscribed topics
 - Renders a Markdown file with YAML frontmatter
 - Writes to `gs://pulse-prod-exports/obsidian/{userId}/{date}.md`
@@ -339,15 +340,15 @@ GET  /api/v1/search?q=&topic=      → vector KNN via Firestore findNearest
 
 Pulse uses **Google Cloud Identity Platform** (enterprise upgrade of Firebase Auth). Same SDK, materially better capabilities:
 
-| Feature | Firebase Auth | Identity Platform |
-|---------|--------------|-------------------|
-| Email + password / magic link / Google OAuth | ✅ | ✅ |
-| Phone / SMS MFA | Limited | Full |
-| TOTP (authenticator app) MFA | ❌ | ✅ |
-| SAML / OIDC federation (SSO) | ❌ | ✅ |
-| Blocking functions | ❌ | ✅ |
-| Audit logging | ❌ | ✅ |
-| Price | Free to 10K MAU | Free to 10K MAU, then $0.0055/MAU |
+| Feature                                      | Firebase Auth   | Identity Platform                 |
+| -------------------------------------------- | --------------- | --------------------------------- |
+| Email + password / magic link / Google OAuth | ✅              | ✅                                |
+| Phone / SMS MFA                              | Limited         | Full                              |
+| TOTP (authenticator app) MFA                 | ❌              | ✅                                |
+| SAML / OIDC federation (SSO)                 | ❌              | ✅                                |
+| Blocking functions                           | ❌              | ✅                                |
+| Audit logging                                | ❌              | ✅                                |
+| Price                                        | Free to 10K MAU | Free to 10K MAU, then $0.0055/MAU |
 
 ### Sign-in flows
 
@@ -386,16 +387,17 @@ Enforced in Firestore Security Rules (data access) and Next.js middleware (API r
 ## 10. Billing Integration (Stripe)
 
 Stripe webhook receiver at `/api/webhooks/stripe` handles:
+
 - `customer.subscription.created/updated` → update `profiles/{uid}.planTier`
 - `customer.subscription.deleted` → downgrade to `free`
 
 Profile lookup is by `stripeCustomerId`. Price IDs map to plan tiers via env vars.
 
-| Product | Env var | Tier |
-|---------|---------|------|
+| Product         | Env var                | Tier    |
+| --------------- | ---------------------- | ------- |
 | Starter Monthly | `STRIPE_PRICE_STARTER` | starter |
-| Pro Monthly | `STRIPE_PRICE_PRO` | pro |
-| Team Monthly | `STRIPE_PRICE_TEAM` | team |
+| Pro Monthly     | `STRIPE_PRICE_PRO`     | pro     |
+| Team Monthly    | `STRIPE_PRICE_TEAM`    | team    |
 
 ---
 
@@ -432,13 +434,13 @@ Machine type: E2_HIGHCPU_8. Logs to Cloud Logging only.
 
 ### Alerting
 
-| Alert | Condition | Channel |
-|-------|-----------|---------|
-| Ingest failure rate | > 10% over 15 min | PagerDuty + Slack |
-| Cloud Tasks queue depth | > 500 tasks | Slack |
-| Cloud Run error rate | > 5% over 5 min | PagerDuty |
-| Firestore read spike | > 500K reads/hour | Slack |
-| LLM cost spike | > $20/day | Email |
+| Alert                   | Condition         | Channel           |
+| ----------------------- | ----------------- | ----------------- |
+| Ingest failure rate     | > 10% over 15 min | PagerDuty + Slack |
+| Cloud Tasks queue depth | > 500 tasks       | Slack             |
+| Cloud Run error rate    | > 5% over 5 min   | PagerDuty         |
+| Firestore read spike    | > 500K reads/hour | Slack             |
+| LLM cost spike          | > $20/day         | Email             |
 
 ### Distributed tracing
 
@@ -450,17 +452,18 @@ OpenTelemetry + `@google-cloud/opentelemetry-cloud-trace-exporter` via `instrume
 
 ### IAM Service Accounts
 
-| Service Account | Purpose |
-|----------------|---------|
-| `pulse-app@` | Cloud Run service — Firestore, Secret Manager, Cloud Tasks, Pub/Sub, GCS, Logging, Monitoring |
-| `pulse-scheduler-invoker@` | Cloud Scheduler → `/api/schedule/*` (run.invoker only) |
-| `pulse-pubsub-invoker@` | Pub/Sub push → `/api/tasks/digest` (run.invoker only) |
-| `pulse-tasks-invoker@` | Cloud Tasks push → `/api/tasks/*` (run.invoker only) |
-| `pulse-cloud-build@` | Build + deploy (run.developer, artifactregistry.writer) |
+| Service Account            | Purpose                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| `pulse-app@`               | Cloud Run service — Firestore, Secret Manager, Cloud Tasks, Pub/Sub, GCS, Logging, Monitoring |
+| `pulse-scheduler-invoker@` | Cloud Scheduler → `/api/schedule/*` (run.invoker only)                                        |
+| `pulse-pubsub-invoker@`    | Pub/Sub push → `/api/tasks/digest` (run.invoker only)                                         |
+| `pulse-tasks-invoker@`     | Cloud Tasks push → `/api/tasks/*` (run.invoker only)                                          |
+| `pulse-cloud-build@`       | Build + deploy (run.developer, artifactregistry.writer)                                       |
 
 ### Firestore Security Rules
 
 Rules replace Postgres RLS. Key policies:
+
 - **Profiles** — owner read only; create blocked (provisioned by blocking function); users cannot self-modify `planTier`, `stripeCustomerId`, `apiKey`
 - **Topics / Sources / Articles** — authenticated read for topics/clusters; sources and articles are admin-only (task route handlers use Admin SDK, bypassing rules)
 - **Subscriptions** — owner read/write; free plan max 1 topic enforced in rules
@@ -478,16 +481,16 @@ Rules replace Postgres RLS. Key policies:
 
 Key env vars validated at startup with Zod:
 
-| Group | Key vars |
-|-------|---------|
-| Firebase (public) | `NEXT_PUBLIC_FIREBASE_API_KEY`, `AUTH_DOMAIN`, `PROJECT_ID`, … |
-| Firebase Admin | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` |
-| Auth | `AUTH_COOKIE_SECRET` (≥ 32 chars) |
-| GCP | `GOOGLE_CLOUD_REGION`, `CLOUD_RUN_APP_URL`, `TASKS_INVOKER_SA`, `GCS_BUCKET` |
-| Scraping | `SCRAPECREATORS_API_KEY`, `FIRECRAWL_API_KEY`, `EXA_API_KEY` |
-| Billing | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*` |
-| Comms | `RESEND_API_KEY` |
-| App | `NEXT_PUBLIC_APP_URL`, `NODE_ENV`, `USE_SYNC_TASKS` |
+| Group             | Key vars                                                                     |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Firebase (public) | `NEXT_PUBLIC_FIREBASE_API_KEY`, `AUTH_DOMAIN`, `PROJECT_ID`, …               |
+| Firebase Admin    | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`       |
+| Auth              | `AUTH_COOKIE_SECRET` (≥ 32 chars)                                            |
+| GCP               | `GOOGLE_CLOUD_REGION`, `CLOUD_RUN_APP_URL`, `TASKS_INVOKER_SA`, `GCS_BUCKET` |
+| Scraping          | `SCRAPECREATORS_API_KEY`, `FIRECRAWL_API_KEY`, `EXA_API_KEY`                 |
+| Billing           | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_*`               |
+| Comms             | `RESEND_API_KEY`                                                             |
+| App               | `NEXT_PUBLIC_APP_URL`, `NODE_ENV`, `USE_SYNC_TASKS`                          |
 
 `USE_SYNC_TASKS=true` calls task handlers directly in dev, skipping Cloud Tasks.
 
@@ -499,28 +502,28 @@ Monthly at ~500 active users, 20 active topics, hourly cadence.
 
 ### GCP infrastructure
 
-| Service | $/month |
-|---------|--------|
-| Cloud Run (single service) | ~$10 |
-| Firestore (~50M reads, 5M writes) | ~$35 |
-| Identity Platform (≤ 10K MAU) | $0 |
-| Cloud Tasks / Scheduler / Pub/Sub | ~$3 |
-| Cloud Storage | ~$2 |
-| Cloud Build | ~$15 |
-| Cloud Armor + CDN + Monitoring | ~$14 |
-| **GCP subtotal** | **~$80** |
+| Service                           | $/month  |
+| --------------------------------- | -------- |
+| Cloud Run (single service)        | ~$10     |
+| Firestore (~50M reads, 5M writes) | ~$35     |
+| Identity Platform (≤ 10K MAU)     | $0       |
+| Cloud Tasks / Scheduler / Pub/Sub | ~$3      |
+| Cloud Storage                     | ~$2      |
+| Cloud Build                       | ~$15     |
+| Cloud Armor + CDN + Monitoring    | ~$14     |
+| **GCP subtotal**                  | **~$80** |
 
 ### External APIs
 
-| Service | $/month |
-|---------|--------|
-| ScrapeCreators | $10–47 |
-| Firecrawl Hobby | $16 |
-| Exa AI | $0–30 |
-| Vertex AI (Claude Haiku + Sonnet) | ~$25 |
+| Service                                   | $/month          |
+| ----------------------------------------- | ---------------- |
+| ScrapeCreators                            | $10–47           |
+| Firecrawl Hobby                           | $16              |
+| Exa AI                                    | $0–30            |
+| Vertex AI (Claude Haiku + Sonnet)         | ~$25             |
 | Vertex AI Embeddings (text-embedding-004) | ~$0 (free quota) |
-| Resend | $0–20 |
-| **External subtotal** | **~$51–138** |
+| Resend                                    | $0–20            |
+| **External subtotal**                     | **~$51–138**     |
 
 **Total: ~$130–220/month** at 500 users. Breakeven at ~15–20 paying Starter subscribers.
 
@@ -552,6 +555,7 @@ pnpm dev
 ```
 
 Key `.env.local` settings for local dev:
+
 - `FIRESTORE_EMULATOR_HOST=localhost:8080` and `FIREBASE_AUTH_EMULATOR_HOST=localhost:9099` — both SDKs auto-connect to emulators when these are set
 - `CLOUD_RUN_APP_URL=http://localhost:3000` — tasks enqueue back to the local server
 - `USE_SYNC_TASKS=true` — skip Cloud Tasks, call handlers directly
@@ -599,4 +603,4 @@ PLAYWRIGHT_BASE_URL=http://localhost:3000 pnpm --filter web exec playwright test
 
 ---
 
-*Last updated: May 2026 · Pulse v1.0*
+_Last updated: May 2026 · Pulse v1.0_

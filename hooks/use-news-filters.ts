@@ -1,42 +1,54 @@
 "use client"
 
 import { useMemo } from "react"
-import type { NewsItem } from "@/lib/firebase"
+import type { Cluster } from "@/lib/types"
 import type { FilterOptions } from "@/components/filter-panel"
 
-export function useNewsFilters(news: NewsItem[], filters: FilterOptions, searchQuery: string) {
+export function useClusterFilters(
+  clusters: Cluster[],
+  filters: FilterOptions,
+  searchQuery: string
+) {
   return useMemo(() => {
-    let filteredNews = [...news]
+    let filtered = [...clusters]
 
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
-      filteredNews = filteredNews.filter(
-        (item) => item.title.toLowerCase().includes(query) || item.domain.toLowerCase().includes(query),
+      filtered = filtered.filter(
+        (c) =>
+          c.summary.toLowerCase().includes(query) ||
+          c.articles.some(
+            (a) => a.title.toLowerCase().includes(query) || a.domain.toLowerCase().includes(query)
+          )
       )
     }
 
     if (filters.domain) {
-      filteredNews = filteredNews.filter((item) => item.domain === filters.domain)
+      filtered = filtered.filter((c) => c.articles.some((a) => a.domain === filters.domain))
     }
 
     if (filters.dateRange) {
-      filteredNews = filteredNews.filter((item) => {
-        const itemDate = new Date(item.date)
-        return itemDate >= filters.dateRange!.from && itemDate <= filters.dateRange!.to
+      filtered = filtered.filter((c) => {
+        const d = new Date(c.publishedAt)
+        return d >= filters.dateRange!.from && d <= filters.dateRange!.to
       })
     }
 
-    const sortValue = filters.sort || "date-desc"
-    const [sortBy, sortOrder] = sortValue.split("-") as ["date" | "domain", "asc" | "desc"]
+    const [sortBy, sortOrder] = (filters.sort || "date-desc").split("-") as [
+      "date" | "domain",
+      "asc" | "desc",
+    ]
 
-    filteredNews.sort((a, b) => {
+    filtered.sort((a, b) => {
+      const primaryA = a.articles[0]?.domain ?? ""
+      const primaryB = b.articles[0]?.domain ?? ""
       const comparison =
         sortBy === "domain"
-          ? a.domain.localeCompare(b.domain)
-          : a.date.getTime() - b.date.getTime()
+          ? primaryA.localeCompare(primaryB)
+          : new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       return sortOrder === "desc" ? -comparison : comparison
     })
 
-    return filteredNews
-  }, [news, filters, searchQuery])
+    return filtered
+  }, [clusters, filters, searchQuery])
 }

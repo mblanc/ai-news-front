@@ -93,24 +93,24 @@ Even a comprehensive curated topic library cannot anticipate every user's specif
 
 ### Business goals
 
-| Goal | Metric | Target (12 months) |
-|---|---|---|
-| Revenue | MRR | $15K |
-| Activation | % of signups who subscribe to ≥1 topic within 24h | > 60% |
-| Retention | Monthly active users / registered users | > 40% |
-| Conversion | Free → paid conversion rate | > 8% |
-| Payback | Months to recover CAC | < 6 months |
+| Goal       | Metric                                            | Target (12 months) |
+| ---------- | ------------------------------------------------- | ------------------ |
+| Revenue    | MRR                                               | $15K               |
+| Activation | % of signups who subscribe to ≥1 topic within 24h | > 60%              |
+| Retention  | Monthly active users / registered users           | > 40%              |
+| Conversion | Free → paid conversion rate                       | > 8%               |
+| Payback    | Months to recover CAC                             | < 6 months         |
 
 ### Product goals
 
-| Goal | Metric | Target |
-|---|---|---|
-| Speed to value | Time from signup to first digest view | < 3 minutes |
-| Digest quality | User-rated relevance score (thumbs up/down on clusters) | > 80% positive |
-| Coverage | Clusters created per topic per day (hourly cadence topics) | 5–20 |
-| Deduplication | % of duplicate articles correctly suppressed | > 90% |
-| Reliability | Pipeline success rate (tasks completing without error) | > 99% |
-| Latency | P95 time from article publication to cluster appearing in feed | < 90 minutes |
+| Goal           | Metric                                                         | Target         |
+| -------------- | -------------------------------------------------------------- | -------------- |
+| Speed to value | Time from signup to first digest view                          | < 3 minutes    |
+| Digest quality | User-rated relevance score (thumbs up/down on clusters)        | > 80% positive |
+| Coverage       | Clusters created per topic per day (hourly cadence topics)     | 5–20           |
+| Deduplication  | % of duplicate articles correctly suppressed                   | > 90%          |
+| Reliability    | Pipeline success rate (tasks completing without error)         | > 99%          |
+| Latency        | P95 time from article publication to cluster appearing in feed | < 90 minutes   |
 
 ### Anti-goals
 
@@ -260,14 +260,16 @@ These are the minimum set for a usable v1.
 
 Users can create their own private topics via two modes. Both modes run through the same underlying pipeline — the difference is how the topic configuration (keywords + source list) is produced.
 
-*Mode A — Natural language:*
+_Mode A — Natural language:_
+
 - User writes a plain-language description of what they want to follow (e.g. "open-source AI models, fine-tuning techniques, Hugging Face releases").
 - A Claude Haiku call extracts: suggested topic name, keyword list (3–10 terms), and a recommended source set drawn from the master source registry.
 - User is shown a preview card: editable keyword chips, toggleable source checkboxes, estimated articles/day.
 - User can optionally run a 7-day dry-run preview (queries Exa AI retroactively; no pipeline cost until confirmed).
 - On confirmation, topic is created with `isUserCreated: true`, `createdBy: userId`, `visibility: 'private'`.
 
-*Mode B — URL list:*
+_Mode B — URL list:_
+
 - User pastes URLs one per line (any mix of RSS feeds, websites, subreddits, X accounts).
 - System auto-detects source type per URL using a heuristic classifier:
   - Path contains `/feed`, `/rss`, `/atom`, or ends in `.xml` → `rss`
@@ -278,7 +280,8 @@ Users can create their own private topics via two modes. Both modes run through 
 - User names the topic, optionally adds a plain-language relevance filter, and confirms.
 - On confirmation, new sources not already in the master registry are provisioned; topic is created.
 
-*Shared constraints (both modes):*
+_Shared constraints (both modes):_
+
 - Custom topics count against the user's topic allowance (same as curated subscriptions).
 - Hard cap: 500 articles/day per custom topic to prevent runaway API costs.
 - Custom topics are `private` by default; not visible to other users.
@@ -490,14 +493,14 @@ The following are explicitly not part of Pulse v1 or v2 and should be treated as
 
 ### External dependencies
 
-| Dependency | Risk level | Mitigation |
-|---|---|---|
-| ScrapeCreators API | Medium — small team, single founder | Maintain fallback adapter for direct Reddit API (free) as a hedge; TikHub as backup for social |
-| Firecrawl | Low — well-funded, growing | Most sites have RSS; Firecrawl is only needed for JS-rendered scrape targets |
-| Exa AI | Low | Brave Search API as fallback; free tier covers early volume |
-| Claude via Vertex | Low — GCP-native, Anthropic/Google partnership | No planned fallback; monitor for outages |
-| Resend | Low | Postmark or SendGrid as drop-in alternatives |
-| Stripe | Very low | No credible alternative needed |
+| Dependency         | Risk level                                     | Mitigation                                                                                     |
+| ------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| ScrapeCreators API | Medium — small team, single founder            | Maintain fallback adapter for direct Reddit API (free) as a hedge; TikHub as backup for social |
+| Firecrawl          | Low — well-funded, growing                     | Most sites have RSS; Firecrawl is only needed for JS-rendered scrape targets                   |
+| Exa AI             | Low                                            | Brave Search API as fallback; free tier covers early volume                                    |
+| Claude via Vertex  | Low — GCP-native, Anthropic/Google partnership | No planned fallback; monitor for outages                                                       |
+| Resend             | Low                                            | Postmark or SendGrid as drop-in alternatives                                                   |
+| Stripe             | Very low                                       | No credible alternative needed                                                                 |
 
 ### Technical risks
 
@@ -526,6 +529,7 @@ The following are explicitly not part of Pulse v1 or v2 and should be treated as
 **Goal:** A working end-to-end pipeline and a minimal read-layer web app. Internal use only. No billing, no RSS delivery — validate the core loop first.
 
 Deliverables:
+
 - Firestore schema + Security Rules deployed.
 - Identity Platform configured (Google OAuth + magic link).
 - Web ingestion for 10 curated topics (AI domain as validation set; source lists include expert opinion sources).
@@ -543,6 +547,7 @@ Exit criteria: the founding team can use Pulse daily and rate ≥ 80% of cluster
 **Goal:** Social sources live; custom topic creation shipped; email digests, RSS, and billing shipped; closed beta with 20–50 external users.
 
 Deliverables:
+
 - Stripe Checkout integration for Starter, Pro, Team monthly plans.
 - Webhook handler to update `planTier` on `subscription.created/updated/deleted`.
 - Plan enforcement: topic count limit, cadence limit.
@@ -565,6 +570,7 @@ Exit criteria: 50 beta users, ≥ 40% weekly active, ≥ 3 users have created a 
 **Goal:** Public launch. All core delivery channels. REST API for Pro users.
 
 Deliverables:
+
 - TikTok + Instagram ingestion.
 - Obsidian sync (nightly GCS export + signed URL).
 - Slack/Teams webhook delivery.
@@ -582,6 +588,7 @@ Exit criteria: public launch, 500 registered users, $3K MRR.
 **Goal:** Land first 3–5 paying team accounts. Unlock the network-effect flywheel.
 
 Deliverables:
+
 - Team workspace: shared topics, member invite, admin role.
 - SAML/OIDC SSO (Identity Platform multi-tenancy).
 - Custom topic builder UI.
@@ -616,4 +623,4 @@ Exit criteria: 3 paying Team accounts, $15K MRR.
 
 ---
 
-*Last updated: May 2026 · Pulse PRD v1.0*
+_Last updated: May 2026 · Pulse PRD v1.0_

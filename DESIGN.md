@@ -47,26 +47,29 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 ### Font Family
 
 **Primary Display & Headings:** Newsreader (serif, classic editorial feel)
+
 - Fallback stack: `'Newsreader', 'Georgia', 'Times New Roman', serif`
 
 **Body & UI:** Geist (sans-serif, modern and clean)
+
 - Fallback stack: `'Geist', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Helvetica Neue', sans-serif`
 
 **Code & Technical:** Geist Mono (monospace, for code and technical content)
+
 - Fallback stack: `'Geist Mono', 'Courier New', 'Courier', monospace`
 
 ### Hierarchy
 
-| Role | Font | Size | Weight | Line Height | Letter Spacing | Notes |
-|------|------|------|--------|-------------|-----------------|-------|
-| Display / H1 | Newsreader | 56px | 400 | 58.8px | Normal | Hero headlines, main page title |
-| Heading / H2 | Newsreader | 36px | 400 | 37.8px | Normal | Section headers, major divisions |
-| Subheading / H3 | Newsreader | 32px | 400 | 33.6px | Normal | Subsection titles, card headers |
-| Body Text | Geist | 16px | 400 | 24.8px | Normal | Primary paragraph content |
-| Span / Lead Text | Newsreader | 18px | 400 | 18.9px | Normal | Emphasized body copy, pull quotes |
-| Small Text / UI | Newsreader | 11px | 400 | 17.05px | Normal | Buttons, badges, UI labels |
-| Metadata / Caption | Geist | 14px | 400 | 21.7px | Normal | Secondary labels, navigation, metadata |
-| Code / Terminal | Geist Mono | 14px | 400 | 21px | Normal | Code blocks, command examples |
+| Role               | Font       | Size | Weight | Line Height | Letter Spacing | Notes                                  |
+| ------------------ | ---------- | ---- | ------ | ----------- | -------------- | -------------------------------------- |
+| Display / H1       | Newsreader | 56px | 400    | 58.8px      | Normal         | Hero headlines, main page title        |
+| Heading / H2       | Newsreader | 36px | 400    | 37.8px      | Normal         | Section headers, major divisions       |
+| Subheading / H3    | Newsreader | 32px | 400    | 33.6px      | Normal         | Subsection titles, card headers        |
+| Body Text          | Geist      | 16px | 400    | 24.8px      | Normal         | Primary paragraph content              |
+| Span / Lead Text   | Newsreader | 18px | 400    | 18.9px      | Normal         | Emphasized body copy, pull quotes      |
+| Small Text / UI    | Newsreader | 11px | 400    | 17.05px     | Normal         | Buttons, badges, UI labels             |
+| Metadata / Caption | Geist      | 14px | 400    | 21.7px      | Normal         | Secondary labels, navigation, metadata |
+| Code / Terminal    | Geist Mono | 14px | 400    | 21px        | Normal         | Code blocks, command examples          |
 
 ### Principles
 
@@ -81,6 +84,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 ### Buttons
 
 **Primary Button (Standard)**
+
 - Background: `#F4EFE6`
 - Text Color: `#1B1816`
 - Font: Newsreader, 11px, weight 400
@@ -92,6 +96,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 - Hover State: Background `#EDE6D8`, maintain border
 
 **Navigation Button (Full-width, minimal style)**
+
 - Background: Transparent
 - Text Color: `#1B1816`
 - Font: Geist, 16px, weight 400
@@ -102,6 +107,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 - Hover State: Text color shifts to `#5A524A`
 
 **Icon / Utility Button**
+
 - Background: `#F4EFE6`
 - Text Color: `#1B1816`
 - Font: Geist Mono, 12px, weight 400
@@ -114,6 +120,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 ### Cards & Containers
 
 **Card (Standard Content Container)**
+
 - Background: `#EDE6D8`
 - Text Color: `#1B1816`
 - Font: Geist, 16px, weight 400
@@ -124,6 +131,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 - Hover State: Subtle shadow or background shift to `#F4EFE6`
 
 **Navigation Bar / Header Container**
+
 - Background: `#EDE6D8`
 - Text Color: `#1B1816`
 - Font: Geist, 16px, weight 400
@@ -136,6 +144,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 ### Inputs & Forms
 
 **Text Input / Form Field**
+
 - Background: `#F4EFE6`
 - Text Color: `#1B1816`
 - Font: Geist, 14px, weight 400
@@ -146,6 +155,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 - Line Height: `21.7px`
 
 **Code Input / Monospace Field**
+
 - Background: `#F4EFE6`
 - Text Color: `#1B1816`
 - Font: Geist Mono, 14px, weight 400
@@ -158,6 +168,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 ### Navigation
 
 **Link (Standard, primary color)**
+
 - Background: Transparent
 - Text Color: `#1B1816`
 - Font: Newsreader, 18px, weight 400
@@ -167,6 +178,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 - Hover State: Text color shifts to `#5A524A`, optional underline
 
 **Link (Secondary, smaller)**
+
 - Background: Transparent
 - Text Color: `#5A524A`
 - Font: Geist, 14px, weight 400
@@ -178,6 +190,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 ### Badges & Status Indicators
 
 **Status Badge (Active)**
+
 - Background: `#1F6B3A` (forest green)
 - Text Color: `#F4EFE6`
 - Font: Geist, 11px, weight 400
@@ -186,6 +199,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 - Border Radius: `0px`
 
 **Accent Badge**
+
 - Background: Transparent
 - Text Color: `#E5006D`
 - Font: Geist, 11px, weight 400
@@ -200,6 +214,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 **Base Unit:** 8px
 
 **Spacing Scale:**
+
 - **Micro:** `8px` — Padding inside small components, tight grouping
 - **Extra Small:** `16px` — Padding in buttons, labels, small gaps
 - **Small:** `24px` — Space between form fields, between UI elements
@@ -211,6 +226,7 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 - **Extreme:** `96px` — Top/bottom margins for hero sections
 
 **Usage Context:**
+
 - `8px` for button padding and compact component spacing
 - `16px` for input padding and form field separation
 - `24px` for navigation and small gaps between UI elements
@@ -221,12 +237,14 @@ The Printing Press design system embodies a sophisticated, editorial aesthetic r
 
 **Max Width:** 1224px (primary content container)
 
-**Column Strategy:** 
+**Column Strategy:**
+
 - Single-column layout with flexible alignment
 - Cards and containers use full width up to max-width constraint
 - Sidebar/complementary content can sit adjacent at larger viewports but stacks on smaller screens
 
 **Section Patterns:**
+
 - Hero section with max-width content, centered or left-aligned
 - Content cards in a flexible grid (1–2 columns depending on viewport)
 - Navigation bar fixed or sticky at top with full-width background
@@ -240,16 +258,16 @@ Whitespace is an active design element, not negative space. Generous margins and
 
 - **Sharp Edges:** `0px` — All components use zero radius for a crisp, print-like quality. No rounded corners throughout the system.
 
-*Note:* The design system intentionally rejects border radius entirely, favoring hard geometric lines that evoke traditional print and technical design aesthetics.
+_Note:_ The design system intentionally rejects border radius entirely, favoring hard geometric lines that evoke traditional print and technical design aesthetics.
 
 ## 6. Depth & Elevation
 
-| Level | Treatment | Use |
-|-------|-----------|-----|
-| Ground (Level 0) | No shadow, flat surface | Page background, base content layer |
-| Raised (Level 1) | Optional: `0px 1px 2px rgba(27, 24, 22, 0.05)` | Cards on light backgrounds, subtle lift |
-| Floating (Level 2) | Optional: `0px 4px 8px rgba(27, 24, 22, 0.1)` | Modals, popovers, interactive overlays |
-| Modal (Level 3) | Optional: `0px 12px 24px rgba(27, 24, 22, 0.15)` | Full-page overlays, critical interactions |
+| Level              | Treatment                                        | Use                                       |
+| ------------------ | ------------------------------------------------ | ----------------------------------------- |
+| Ground (Level 0)   | No shadow, flat surface                          | Page background, base content layer       |
+| Raised (Level 1)   | Optional: `0px 1px 2px rgba(27, 24, 22, 0.05)`   | Cards on light backgrounds, subtle lift   |
+| Floating (Level 2) | Optional: `0px 4px 8px rgba(27, 24, 22, 0.1)`    | Modals, popovers, interactive overlays    |
+| Modal (Level 3)    | Optional: `0px 12px 24px rgba(27, 24, 22, 0.15)` | Full-page overlays, critical interactions |
 
 **Shadow Philosophy:**
 
@@ -283,13 +301,13 @@ The Printing Press design system favors minimal to no shadows by default. The ae
 
 ### Breakpoints
 
-| Name | Width | Key Changes |
-|------|-------|-------------|
-| Mobile (XS) | 320px–479px | Single column, full-width cards, `24px` container padding, smaller `24px` gaps between sections, buttons full-width |
-| Small (S) | 480px–767px | Single column, `32px` container padding, `32px` gaps between sections, card width at 100% |
-| Medium (M) | 768px–1023px | Single–two column flexible layout, `40px` container padding, `48px` gaps, cards can sit side-by-side if space permits |
-| Large (L) | 1024px–1223px | Two-column grid, max-width 1024px container, `48px` padding, full `60px` gaps between major sections |
-| Extra Large (XL) | 1224px+ | Two-column or wide layout, max-width 1224px enforced, `80px` gaps between sections, full sidebar support |
+| Name             | Width         | Key Changes                                                                                                           |
+| ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Mobile (XS)      | 320px–479px   | Single column, full-width cards, `24px` container padding, smaller `24px` gaps between sections, buttons full-width   |
+| Small (S)        | 480px–767px   | Single column, `32px` container padding, `32px` gaps between sections, card width at 100%                             |
+| Medium (M)       | 768px–1023px  | Single–two column flexible layout, `40px` container padding, `48px` gaps, cards can sit side-by-side if space permits |
+| Large (L)        | 1024px–1223px | Two-column grid, max-width 1024px container, `48px` padding, full `60px` gaps between major sections                  |
+| Extra Large (XL) | 1224px+       | Two-column or wide layout, max-width 1224px enforced, `80px` gaps between sections, full sidebar support              |
 
 ### Touch Targets
 

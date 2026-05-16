@@ -1,132 +1,112 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
-import { Loader2 } from "lucide-react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Header } from "@/components/header"
 import { SearchBar } from "@/components/search-bar"
 import { FilterPanel, type FilterOptions } from "@/components/filter-panel"
 import { NewsList } from "@/components/news-list"
-import { SummaryDialog } from "@/components/summary-dialog"
 import { LoadingSkeleton } from "@/components/loading-skeleton"
 import { ThemeProvider } from "@/components/theme-provider"
-import { useNewsFilters } from "@/hooks/use-news-filters"
-import type { NewsItem } from "@/lib/firebase"
+import { useClusterFilters } from "@/hooks/use-news-filters"
+import type { Cluster } from "@/lib/types"
 
-function dayToISODate(d: Date): string {
-  return d.toISOString().split("T")[0]
+function dayStart(d: Date): Date {
+  const s = new Date(d)
+  s.setUTCHours(0, 0, 0, 0)
+  return s
 }
 
-function daysAgo(n: number): Date {
-  const d = new Date()
-  d.setDate(d.getDate() - n)
-  return d
+function subtractDays(d: Date, n: number): Date {
+  const r = new Date(d)
+  r.setUTCDate(r.getUTCDate() - n)
+  return r
+}
+
+async function fetchClustersForRange(start: Date, end: Date): Promise<Cluster[]> {
+  const params = new URLSearchParams({
+    startDate: start.toISOString(),
+    endDate: end.toISOString(),
+  })
+  const res = await fetch(`/api/clusters?${params}`)
+  if (!res.ok) throw new Error("Failed to fetch")
+  const data: Cluster[] = await res.json()
+  return data.map((c) => ({
+    ...c,
+    createdAt: new Date(c.createdAt),
+    publishedAt: new Date(c.publishedAt),
+  }))
 }
 
 export default function HomePage() {
-  const [news, setNews] = useState<NewsItem[]>([])
-  const [initialLoading, setInitialLoading] = useState(true)
-  const [initialError, setInitialError] = useState(false)
-  const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
-
+  const [clusters, setClusters] = useState<Cluster[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [oldestDay, setOldestDay] = useState<Date | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [filters, setFilters] = useState<FilterOptions>({ sort: "date-desc" })
-  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null)
-  const [summaryDialogOpen, setSummaryDialogOpen] = useState(false)
-
   const sentinelRef = useRef<HTMLDivElement>(null)
-  const filteredNews = useNewsFilters(news, filters, searchQuery)
+  const loadingMoreRef = useRef(false)
 
-  const fetchNews = useCallback(async (params: string) => {
-    const res = await fetch(`/api/news?${params}`)
-    if (!res.ok) throw new Error("Failed to fetch")
-    const data: NewsItem[] = await res.json()
-    return data.map((item) => ({ ...item, date: new Date(item.date) }))
-  }, [])
+  const filteredClusters = useClusterFilters(clusters, filters, searchQuery)
+  const domains = useMemo(
+    () => Array.from(new Set(clusters.flatMap((c) => c.articles.map((a) => a.domain)))),
+    [clusters]
+  )
 
-  // ── Initial load: last 3 days in parallel ────────────────────────────────
-
-  const initFeed = useCallback(async () => {
-    setInitialLoading(true)
-    setInitialError(false)
-    setNews([])
-    setHasMore(true)
+  const initialLoad = useCallback(async () => {
+    setLoading(true)
+    setError(false)
     try {
-      const days = [daysAgo(0), daysAgo(1), daysAgo(2)]
-      const results = await Promise.all(days.map((d) => fetchNews(`date=${dayToISODate(d)}`)))
-      setNews(results.flat())
+      const now = new Date()
+      const start = dayStart(subtractDays(now, 2))
+      const data = await fetchClustersForRange(start, now)
+      setClusters(data)
+      setOldestDay(start)
     } catch {
-      setInitialError(true)
+      setError(true)
     } finally {
-      setInitialLoading(false)
+      setLoading(false)
     }
-  }, [fetchNews])
-
-  useEffect(() => {
-    initFeed()
-  }, [initFeed])
-
-  // ── Infinite scroll: load next batch ──────────────────────────────────────
+  }, [])
 
   const loadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore || news.length === 0) return
-    setIsLoadingMore(true)
-
-    const lastItem = news[news.length - 1]
-    const before = new Date(lastItem.date).toISOString()
-
+    if (loadingMoreRef.current || !oldestDay) return
+    loadingMoreRef.current = true
+    setLoadingMore(true)
     try {
-      const data = await fetchNews(`before=${before}&limit=20`)
-      if (data.length > 0) {
-        setNews((prev) => [...prev, ...data])
-      } else {
-        setHasMore(false)
-      }
-    } catch (error) {
-      console.error("Error loading more news:", error)
-      setHasMore(false)
+      const end = new Date(oldestDay.getTime() - 1)
+      const start = dayStart(subtractDays(oldestDay, 1))
+      const data = await fetchClustersForRange(start, end)
+      setClusters((prev) => {
+        const existingIds = new Set(prev.map((c) => c.id))
+        return [...prev, ...data.filter((c) => !existingIds.has(c.id))]
+      })
+      setOldestDay(start)
+    } catch {
+      setError(true)
     } finally {
-      setIsLoadingMore(false)
+      loadingMoreRef.current = false
+      setLoadingMore(false)
     }
-  }, [news, isLoadingMore, hasMore, fetchNews])
+  }, [oldestDay])
 
   useEffect(() => {
-    if (initialLoading) return
-    const el = sentinelRef.current
-    if (!el) return
+    initialLoad()
+  }, [initialLoad])
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) loadMore()
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore()
       },
-      { rootMargin: "200px" } // Load earlier for smoother experience
+      { rootMargin: "200px" }
     )
-    observer.observe(el)
+    observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [loadMore, initialLoading])
-
-  // ── Date range filter override ────────────────────────────────────────────
-
-  useEffect(() => {
-    if (filters.dateRange) {
-      const { from, to } = filters.dateRange
-      fetchNews(`startDate=${from.toISOString()}&endDate=${to.toISOString()}`)
-        .then((data) => {
-          setNews(data)
-          setHasMore(false)
-        })
-        .catch(() => {})
-    } else if (!initialLoading) {
-      initFeed()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.dateRange, fetchNews])
-
-  // ── Summarize ─────────────────────────────────────────────────────────────
-
-  const handleSummarize = useCallback((newsItem: NewsItem) => {
-    setSelectedNews(newsItem)
-    setSummaryDialogOpen(true)
-  }, [])
+  }, [loadMore])
 
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
@@ -136,21 +116,21 @@ export default function HomePage() {
         <main className="mx-auto px-4 sm:px-6 py-8 sm:py-10" style={{ maxWidth: "1224px" }}>
           <div className="space-y-8">
             <div className="max-w-xl">
-              <SearchBar onSearch={setSearchQuery} placeholder="Search AI news articles…" />
+              <SearchBar onSearch={setSearchQuery} placeholder="Search stories…" />
             </div>
 
-            {initialError && (
+            {error && (
               <div className="border border-border bg-card flex items-center justify-between px-4 py-3">
                 <p className="font-sans text-sm text-foreground">
                   <span className="font-sans text-[10px] uppercase tracking-widest text-muted-foreground mr-3">
                     Error
                   </span>
-                  Couldn't load articles. Check your connection and try again.
+                  Couldn&apos;t load stories. Check your connection and try again.
                 </p>
                 <button
                   type="button"
-                  onClick={initFeed}
-                  className="font-sans text-xs text-foreground border border-border px-3 py-1.5 bg-background hover:bg-card active:bg-card focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-colors ml-4 shrink-0"
+                  onClick={initialLoad}
+                  className="font-sans text-xs text-foreground border border-border px-3 py-1.5 bg-background hover:bg-card transition-colors ml-4 shrink-0"
                   style={{ borderRadius: 0 }}
                 >
                   Retry
@@ -160,42 +140,39 @@ export default function HomePage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               <div className="lg:col-span-1">
-                <FilterPanel news={news} onFilter={setFilters} />
+                <FilterPanel domains={domains} onFilter={setFilters} />
               </div>
 
               <div className="lg:col-span-3">
-                {initialLoading ? (
+                {loading ? (
                   <LoadingSkeleton />
                 ) : (
                   <div className="space-y-6">
                     <div className="flex items-baseline justify-between border-b border-border pb-3">
                       <h2 className="font-newsreader text-2xl sm:text-3xl text-foreground">
-                        {searchQuery ? `Results for "${searchQuery}"` : "Latest AI News"}
+                        {searchQuery ? `Results for "${searchQuery}"` : "Latest AI Stories"}
                       </h2>
                       <span className="font-sans text-xs text-muted-foreground">
-                        {filteredNews.length} of {news.length}
+                        {filteredClusters.length} of {clusters.length}
                       </span>
                     </div>
 
                     <NewsList
-                      news={filteredNews}
-                      onSummarize={handleSummarize}
+                      clusters={filteredClusters}
                       filters={filters}
                       searchQuery={searchQuery}
                     />
 
-                    <div ref={sentinelRef} />
+                    <div ref={sentinelRef} className="h-1" />
 
-                    {isLoadingMore && (
-                      <div className="flex justify-center py-8">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    {loadingMore && (
+                      <div className="flex items-center gap-3 py-4">
+                        <div className="h-px flex-1 bg-border" />
+                        <span className="font-sans text-[10px] uppercase tracking-widest text-muted-foreground">
+                          Loading
+                        </span>
+                        <div className="h-px flex-1 bg-border" />
                       </div>
-                    )}
-
-                    {!hasMore && !isLoadingMore && news.length > 0 && (
-                      <p className="font-sans text-xs text-muted-foreground text-center py-8">
-                        All articles loaded
-                      </p>
                     )}
                   </div>
                 )}
@@ -203,8 +180,6 @@ export default function HomePage() {
             </div>
           </div>
         </main>
-
-        <SummaryDialog news={selectedNews} open={summaryDialogOpen} onOpenChange={setSummaryDialogOpen} />
       </div>
     </ThemeProvider>
   )
