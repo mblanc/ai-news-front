@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ExternalLink, Loader2 } from "lucide-react"
 import { DomainIcon } from "@/components/domain-icon"
@@ -90,7 +89,7 @@ export function SummaryDialog({ news, open, onOpenChange }: SummaryDialogProps) 
             href={news.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 font-sans text-sm text-muted-foreground hover:text-foreground border border-border px-4 py-2.5 bg-card hover:bg-background focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-colors"
+            className="flex items-center gap-2 font-sans text-sm text-muted-foreground hover:text-foreground border border-border px-4 py-2.5 bg-card hover:bg-background active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-[transform,colors] duration-150"
             style={{ borderRadius: 0 }}
           >
             <ExternalLink className="h-3.5 w-3.5" />
@@ -105,7 +104,7 @@ export function SummaryDialog({ news, open, onOpenChange }: SummaryDialogProps) 
             {isLoading && (
               <div className="flex flex-col items-center py-8 gap-3">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                <p className="font-sans text-xs text-muted-foreground">Generating summary\u2026</p>
+                <p className="font-sans text-xs text-muted-foreground">{"Generating summary\u2026"}</p>
               </div>
             )}
 
@@ -115,7 +114,7 @@ export function SummaryDialog({ news, open, onOpenChange }: SummaryDialogProps) 
                 <button
                   type="button"
                   onClick={generateSummary}
-                  className="font-sans text-xs leading-none px-4 py-2 border border-border bg-background hover:bg-card active:bg-card focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-colors"
+                  className="font-sans text-xs leading-none px-4 py-2 border border-border bg-background hover:bg-card active:bg-card active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-[transform,colors] duration-150"
                   style={{ borderRadius: 0 }}
                 >
                   Try again
@@ -124,7 +123,7 @@ export function SummaryDialog({ news, open, onOpenChange }: SummaryDialogProps) 
             )}
 
             {summary && !isLoading && (
-              <div className="space-y-4">
+              <div className="space-y-4 animate-in fade-in-0 duration-200">
                 <div className="border border-border bg-card p-4">
                   <p className="font-sans text-sm text-foreground leading-relaxed">{summary}</p>
                 </div>
@@ -133,7 +132,7 @@ export function SummaryDialog({ news, open, onOpenChange }: SummaryDialogProps) 
                     type="button"
                     onClick={generateSummary}
                     disabled={isLoading}
-                    className="font-sans text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    className="font-sans text-xs text-muted-foreground hover:text-foreground active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed transition-[transform,colors] duration-150"
                   >
                     Regenerate
                   </button>

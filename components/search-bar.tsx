@@ -49,7 +49,7 @@ export function SearchBar({ onSearch, placeholder = "Search news...", defaultVal
       <button
         type="submit"
         aria-label="Search"
-        className="h-10 px-6 font-sans text-xs text-foreground bg-background border border-border hover:bg-card active:bg-card focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-colors whitespace-nowrap"
+        className="h-10 px-6 font-sans text-xs text-foreground bg-background border border-border hover:bg-card active:bg-card active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-[transform,colors] duration-150 whitespace-nowrap"
         style={{ borderRadius: 0 }}
       >
         Search

@@ -129,7 +129,7 @@ export function NewsList({ news, onSummarize, filters, searchQuery }: NewsListPr
                         type="button"
                         onClick={() => handleSummarize(item)}
                         disabled={loadingId === item.id}
-                        className="font-sans text-xs leading-none px-4 py-2.5 border border-border bg-background hover:bg-card active:bg-card focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        className="font-sans text-xs leading-none px-4 py-2.5 border border-border bg-background hover:bg-card active:bg-card active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none disabled:opacity-40 disabled:cursor-not-allowed transition-[transform,colors] duration-150"
                         style={{ borderRadius: 0 }}
                       >
                         {loadingId === item.id ? "Summarizing\u2026" : "Summarize"}

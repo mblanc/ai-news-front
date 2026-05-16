@@ -111,7 +111,11 @@ export function FilterPanel({ news, onFilter }: FilterPanelProps) {
         </div>
       </div>
 
-      <div id="filter-panel-body" className={`lg:block ${mobileOpen ? "block" : "hidden"}`}>
+      <div
+        id="filter-panel-body"
+        className={`grid transition-[grid-template-rows] duration-200 ease-out lg:grid-rows-[1fr] ${mobileOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+      >
+      <div className="overflow-hidden">
       <div className="p-5 space-y-5">
         {/* Domain */}
         <div className="space-y-1.5">
@@ -222,6 +226,7 @@ export function FilterPanel({ news, onFilter }: FilterPanelProps) {
             )}
           </div>
         )}
+      </div>
       </div>
       </div>
     </div>
