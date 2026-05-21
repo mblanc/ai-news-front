@@ -63,22 +63,29 @@ export default function HomePage() {
       .catch(() => {})
   }, [])
 
-  const initialLoad = useCallback(async () => {
-    await Promise.resolve()
+  const fetchInitialData = useCallback(async () => {
+    const now = new Date()
+    const start = dayStart(subtractDays(now, 2))
+    const data = await fetchClustersForRange(start, now)
+    return { data, start }
+  }, [])
+
+  const handleRetry = useCallback(() => {
     setLoading(true)
     setError(false)
-    try {
-      const now = new Date()
-      const start = dayStart(subtractDays(now, 2))
-      const data = await fetchClustersForRange(start, now)
-      setClusters(data)
-      setOldestDay(start)
-    } catch {
-      setError(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+    fetchInitialData()
+      .then(({ data, start }) => {
+        setClusters(data)
+        setOldestDay(start)
+        setError(false)
+      })
+      .catch(() => {
+        setError(true)
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }, [fetchInitialData])
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !oldestDay || !hasMore) return
@@ -106,9 +113,25 @@ export default function HomePage() {
   }, [oldestDay, hasMore])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    initialLoad()
-  }, [initialLoad])
+    let active = true
+    fetchInitialData()
+      .then(({ data, start }) => {
+        if (!active) return
+        setClusters(data)
+        setOldestDay(start)
+        setError(false)
+      })
+      .catch(() => {
+        if (!active) return
+        setError(true)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [fetchInitialData])
 
   useEffect(() => {
     const sentinel = sentinelRef.current
@@ -144,7 +167,7 @@ export default function HomePage() {
                 </p>
                 <button
                   type="button"
-                  onClick={initialLoad}
+                  onClick={handleRetry}
                   className="font-sans text-xs text-foreground border border-border px-3 py-1.5 bg-background hover:bg-card transition-colors ml-4 shrink-0"
                   style={{ borderRadius: 0 }}
                 >
