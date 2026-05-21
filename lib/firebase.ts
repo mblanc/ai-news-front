@@ -17,6 +17,17 @@ const db = new Firestore({
 
 export { db }
 
+/**
+ * Helper to calculate the expiration timestamp based on TTL_DAYS env var.
+ * Minimum of 3 days to avoid deleting clusters needed for ongoing centroid matching.
+ */
+export function getTtlExpirationDate(): Date {
+  const defaultTtlDays = 14
+  const envTtl = process.env.TTL_DAYS ? parseInt(process.env.TTL_DAYS, 10) : defaultTtlDays
+  const ttlDays = isNaN(envTtl) || envTtl < 3 ? defaultTtlDays : envTtl
+  return new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000)
+}
+
 export function docToSource(id: string, data: FirebaseFirestore.DocumentData): Source {
   return {
     id,
@@ -44,6 +55,7 @@ function mapDocToCluster(doc: QueryDocumentSnapshot): Cluster {
     articleCount: d.articleCount ?? 0,
     createdAt,
     publishedAt,
+    expireAt: d.expireAt?.toDate?.() ?? undefined,
   } satisfies Cluster
 }
 
@@ -55,7 +67,8 @@ export async function getClustersByDateRange(startDate: Date, endDate: Date): Pr
       .where("publishedAt", "<=", endDate)
       .orderBy("publishedAt", "desc")
       .get()
-    return snap.docs.map(mapDocToCluster)
+    const now = new Date()
+    return snap.docs.map(mapDocToCluster).filter((c) => !c.expireAt || c.expireAt > now)
   } catch (error) {
     console.error("Error fetching clusters by date range:", error)
     return []
@@ -69,7 +82,8 @@ export async function getClusters(limitCount = 100): Promise<Cluster[]> {
       .orderBy("createdAt", "desc")
       .limit(limitCount)
       .get()
-    return snap.docs.map(mapDocToCluster)
+    const now = new Date()
+    return snap.docs.map(mapDocToCluster).filter((c) => !c.expireAt || c.expireAt > now)
   } catch (error) {
     console.error("Error fetching clusters:", error)
     return []
@@ -112,6 +126,7 @@ export async function updateCluster(
       centroid,
       articleCount: articles.length,
       isSingleton: articles.length === 1,
+      expireAt: getTtlExpirationDate(),
       updatedAt: FieldValue.serverTimestamp(),
     })
 }

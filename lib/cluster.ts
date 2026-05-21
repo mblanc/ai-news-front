@@ -18,6 +18,8 @@ export interface ArticleWithEmbedding {
   title: string
   url: string
   domain: string
+  sourceId: string
+  sourceName: string
   excerpt: string
   relevanceScore: number
   embedding: number[]
@@ -39,6 +41,7 @@ export interface ExistingCluster {
 export interface ClusteringResult {
   newClusters: ArticleCluster[]
   updatedClusters: Array<{ id: string; articles: ArticleWithEmbedding[]; centroid: number[] }>
+  alreadyClustered: ArticleWithEmbedding[]
 }
 
 export async function embed(text: string): Promise<number[]> {
@@ -106,15 +109,22 @@ export function clusterWithExisting(
   // mutable copies so we can recompute centroids as articles are added
   const existingMutable = existing.map((c) => ({ ...c, articles: [...c.articles] }))
   const unmatched: ArticleWithEmbedding[] = []
+  const alreadyClustered: ArticleWithEmbedding[] = []
 
   for (const article of newArticles) {
     const { index, similarity } = findBestMatch(article.embedding, existingMutable)
 
     if (index >= 0 && similarity >= CLUSTER_THRESHOLD) {
-      existingMutable[index].articles.push(article)
-      existingMutable[index].centroid = meanVector(
-        existingMutable[index].articles.map((a) => a.embedding)
-      )
+      const alreadyExists = existingMutable[index].articles.some((a) => a.id === article.id)
+      if (!alreadyExists) {
+        existingMutable[index].articles.push(article)
+        existingMutable[index].centroid = meanVector(
+          existingMutable[index].articles.map((a) => a.embedding)
+        )
+      } else {
+        // Article already belongs to this cluster (e.g. stuck from a crashed run)
+        alreadyClustered.push(article)
+      }
     } else {
       unmatched.push(article)
     }
@@ -129,6 +139,7 @@ export function clusterWithExisting(
       articles: c.articles,
       centroid: c.centroid,
     })),
+    alreadyClustered,
   }
 }
 
@@ -156,6 +167,8 @@ export function toClusterArticle(a: ArticleWithEmbedding): ClusterArticle {
     title: a.title,
     url: a.url,
     domain: a.domain,
+    sourceId: a.sourceId,
+    sourceName: a.sourceName,
     excerpt: a.excerpt,
     relevanceScore: a.relevanceScore,
   }

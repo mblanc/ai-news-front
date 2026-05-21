@@ -18,12 +18,15 @@ export interface Article {
   urlHash: string
   title: string
   domain: string
+  sourceId: string
+  sourceName: string
   bodyMd: string
   excerpt: string
   relevanceScore: number
   embedding: number[]
   status: ArticleStatus
   ingestedAt: Date
+  expireAt?: Date
 }
 
 export type TopicTag =
@@ -45,6 +48,8 @@ export interface ClusterArticle {
   title: string
   url: string
   domain: string
+  sourceId: string
+  sourceName: string
   excerpt: string
   relevanceScore: number
 }
@@ -60,4 +65,5 @@ export interface Cluster {
   articleCount: number
   createdAt: Date
   publishedAt: Date
+  expireAt?: Date
 }

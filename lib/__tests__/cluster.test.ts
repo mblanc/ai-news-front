@@ -48,6 +48,8 @@ function makeArticle(id: string, embedding: number[]): ArticleWithEmbedding {
     title: id,
     url: `https://example.com/${id}`,
     domain: "example.com",
+    sourceId: "source-1",
+    sourceName: "Example",
     excerpt: "",
     relevanceScore: 7,
     embedding,

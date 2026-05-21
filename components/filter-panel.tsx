@@ -13,14 +13,14 @@ import {
 import { CalendarIcon, ChevronDown, X } from "lucide-react"
 import { format } from "date-fns"
 interface FilterPanelProps {
-  domains: string[]
+  sources: Array<{ id: string; name: string }>
   onFilter: (filters: FilterOptions) => void
 }
 
 export type SortOption = "date-desc" | "date-asc" | "domain-asc" | "domain-desc"
 
 export interface FilterOptions {
-  domain?: string
+  sourceId?: string
   dateRange?: {
     from: Date
     to: Date
@@ -35,20 +35,23 @@ const SORT_LABELS: Record<SortOption, string> = {
   "domain-desc": "Domain (Z\u2013A)",
 }
 
-export function FilterPanel({ domains, onFilter }: FilterPanelProps) {
+export function FilterPanel({ sources, onFilter }: FilterPanelProps) {
   const [filters, setFilters] = useState<FilterOptions>({ sort: "date-desc" })
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const sortedDomains = [...domains].sort()
+  const sortedSources = [...sources].sort((a, b) => a.name.localeCompare(b.name))
+  const selectedSourceName = filters.sourceId
+    ? (sources.find((s) => s.id === filters.sourceId)?.name ?? filters.sourceId)
+    : undefined
 
   useEffect(() => {
     onFilter(filters)
   }, [filters, onFilter])
 
-  const handleDomainChange = (domain: string) => {
-    setFilters((prev) => ({ ...prev, domain: domain === "all" ? undefined : domain }))
+  const handleSourceChange = (sourceId: string) => {
+    setFilters((prev) => ({ ...prev, sourceId: sourceId === "all" ? undefined : sourceId }))
   }
 
   const handleDateRangeChange = (range: { from?: Date; to?: Date }) => {
@@ -76,8 +79,8 @@ export function FilterPanel({ domains, onFilter }: FilterPanelProps) {
     setDateRange({})
   }
 
-  const hasActiveFilters = filters.domain || filters.dateRange
-  const activeFilterCount = [filters.domain, filters.dateRange].filter(Boolean).length
+  const hasActiveFilters = filters.sourceId || filters.dateRange
+  const activeFilterCount = [filters.sourceId, filters.dateRange].filter(Boolean).length
 
   return (
     <div className="border border-border bg-card">
@@ -123,23 +126,23 @@ export function FilterPanel({ domains, onFilter }: FilterPanelProps) {
       >
         <div className="overflow-hidden">
           <div className="p-5 space-y-5">
-            {/* Domain */}
+            {/* Source */}
             <div className="space-y-1.5">
-              <label htmlFor="filter-domain" className="font-sans text-xs text-muted-foreground">
-                Domain
+              <label htmlFor="filter-source" className="font-sans text-xs text-muted-foreground">
+                Source
               </label>
-              <Select value={filters.domain || "all"} onValueChange={handleDomainChange}>
+              <Select value={filters.sourceId || "all"} onValueChange={handleSourceChange}>
                 <SelectTrigger
-                  id="filter-domain"
+                  id="filter-source"
                   className="bg-input border-border font-sans text-sm h-9 focus-visible:ring-accent"
                 >
-                  <SelectValue placeholder="All domains" />
+                  <SelectValue placeholder="All sources" />
                 </SelectTrigger>
                 <SelectContent className="font-sans text-sm">
-                  <SelectItem value="all">All domains</SelectItem>
-                  {sortedDomains.map((domain) => (
-                    <SelectItem key={domain} value={domain}>
-                      {domain}
+                  <SelectItem value="all">All sources</SelectItem>
+                  {sortedSources.map((source) => (
+                    <SelectItem key={source.id} value={source.id}>
+                      {source.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -227,13 +230,13 @@ export function FilterPanel({ domains, onFilter }: FilterPanelProps) {
             {/* Active filter chips */}
             {hasActiveFilters && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {filters.domain && (
+                {filters.sourceId && (
                   <span className="inline-flex items-center gap-1 font-sans text-[11px] text-foreground border border-border px-2 py-1">
-                    {filters.domain}
+                    {selectedSourceName}
                     <button
                       type="button"
-                      aria-label={`Remove ${filters.domain} filter`}
-                      onClick={() => handleDomainChange("all")}
+                      aria-label={`Remove ${selectedSourceName} filter`}
+                      onClick={() => handleSourceChange("all")}
                       className="p-2 -m-1 flex items-center justify-center hover:text-accent transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none"
                     >
                       <X className="h-2.5 w-2.5" />

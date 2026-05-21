@@ -23,8 +23,8 @@ export function useClusterFilters(
       )
     }
 
-    if (filters.domain) {
-      filtered = filtered.filter((c) => c.articles.some((a) => a.domain === filters.domain))
+    if (filters.sourceId) {
+      filtered = filtered.filter((c) => c.articles.some((a) => a.sourceId === filters.sourceId))
     }
 
     if (filters.dateRange) {

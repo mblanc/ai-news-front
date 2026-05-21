@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Header } from "@/components/header"
 import { SearchBar } from "@/components/search-bar"
 import { FilterPanel, type FilterOptions } from "@/components/filter-panel"
@@ -50,12 +50,21 @@ export default function HomePage() {
   const loadingMoreRef = useRef(false)
 
   const filteredClusters = useClusterFilters(clusters, filters, searchQuery)
-  const domains = useMemo(
-    () => Array.from(new Set(clusters.flatMap((c) => c.articles.map((a) => a.domain)))),
-    [clusters]
-  )
+  const [sources, setSources] = useState<Array<{ id: string; name: string }>>([])
+
+  useEffect(() => {
+    fetch("/api/sources")
+      .then((r) => (r.ok ? r.json() : { sources: [] }))
+      .then(
+        ({ sources: srcs }: { sources: Array<{ id: string; name: string; enabled: boolean }> }) => {
+          setSources(srcs.filter((s) => s.enabled).map((s) => ({ id: s.id, name: s.name })))
+        }
+      )
+      .catch(() => {})
+  }, [])
 
   const initialLoad = useCallback(async () => {
+    await Promise.resolve()
     setLoading(true)
     setError(false)
     try {
@@ -97,6 +106,7 @@ export default function HomePage() {
   }, [oldestDay, hasMore])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     initialLoad()
   }, [initialLoad])
 
@@ -145,7 +155,7 @@ export default function HomePage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               <div className="lg:col-span-1">
-                <FilterPanel domains={domains} onFilter={setFilters} />
+                <FilterPanel sources={sources} onFilter={setFilters} />
               </div>
 
               <div className="lg:col-span-3">

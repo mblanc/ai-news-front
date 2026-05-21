@@ -12,7 +12,7 @@ import {
   type ArticleWithEmbedding,
   type ExistingCluster,
 } from "@/lib/cluster"
-import { getRecentClusterCentroids, updateCluster } from "@/lib/firebase"
+import { getRecentClusterCentroids, updateCluster, getTtlExpirationDate } from "@/lib/firebase"
 import type { Source, TopicTag, Sentiment } from "@/lib/types"
 
 const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.1-flash-lite"
@@ -49,6 +49,30 @@ function hostname(url: string): string {
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms))
+}
+
+export async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let index = 0
+
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const currentIndex = index++
+      try {
+        results[currentIndex] = await fn(items[currentIndex])
+      } catch (err) {
+        throw err
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker())
+  await Promise.all(workers)
+  return results
 }
 
 async function findRssLink(html: string, baseUrl: string): Promise<string | null> {
@@ -172,6 +196,26 @@ async function resolveSourceUrls(
 
 // ─── main pipeline ─────────────────────────────────────────────────────────────
 
+const LOCK_DOC = "_locks/ingest"
+const LOCK_TTL_MS = 30 * 60 * 1000 // 30 minutes — stale lock threshold
+
+async function acquireIngestLock(): Promise<boolean> {
+  const lockRef = db.doc(LOCK_DOC)
+  return db.runTransaction(async (tx) => {
+    const lock = await tx.get(lockRef)
+    if (lock.exists) {
+      const lockedAt: number = lock.data()!.lockedAt?.toMillis?.() ?? 0
+      if (Date.now() - lockedAt < LOCK_TTL_MS) return false // another run is active
+    }
+    tx.set(lockRef, { lockedAt: FieldValue.serverTimestamp() })
+    return true
+  })
+}
+
+async function releaseIngestLock(): Promise<void> {
+  await db.doc(LOCK_DOC).delete()
+}
+
 export async function runIngest(log: (msg: string) => void = console.log): Promise<IngestStats> {
   const start = Date.now()
   const stats: IngestStats = {
@@ -185,172 +229,219 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
     clusters_created: 0,
   }
 
-  // Step 1 — load enabled sources
-  log("Step 1/8 — Loading sources")
-  const sourcesSnap = await db.collection("sources").where("enabled", "==", true).get()
-  const sources = sourcesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Source)
-  stats.sources = sources.length
-  if (sources.length === 0) {
-    log("No enabled sources found. Stopping.")
+  const locked = await acquireIngestLock()
+  if (!locked) {
+    log("Ingest already in progress — skipping (distributed lock held)")
     stats.duration_ms = Date.now() - start
     return stats
   }
-  log(`Found ${sources.length} enabled source${sources.length === 1 ? "" : "s"}`)
 
-  // Step 2 — resolve article URLs from each source
-  log("Step 2/8 — Resolving article URLs")
-  const cutoff = new Date(Date.now() - THREE_DAYS_MS)
-  const allItems: { url: string; pubDate: Date | null }[] = []
-
-  for (const source of sources) {
-    log(`Source: ${source.name ?? source.url}`)
-    try {
-      const items = await resolveSourceUrls(source, log)
-      let tooOld = 0
-      for (const item of items) {
-        if (item.pubDate && item.pubDate < cutoff) {
-          tooOld++
-          stats.too_old++
-          continue
-        }
-        allItems.push(item)
-      }
-      log(`  ${items.length} items (${tooOld} too old, ${items.length - tooOld} kept)`)
-    } catch (e) {
-      log(`  Error: ${(e as Error).message}`)
+  try {
+    // Step 1 — load enabled sources
+    log("Step 1/8 — Loading sources")
+    const sourcesSnap = await db.collection("sources").where("enabled", "==", true).get()
+    const sources = sourcesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Source)
+    stats.sources = sources.length
+    if (sources.length === 0) {
+      log("No enabled sources found. Stopping.")
+      stats.duration_ms = Date.now() - start
+      return stats
     }
-  }
+    log(`Found ${sources.length} enabled source${sources.length === 1 ? "" : "s"}`)
 
-  // deduplicate URLs across sources
-  const seen = new Set<string>()
-  const uniqueItems = allItems.filter(({ url }) => {
-    if (seen.has(url)) return false
-    seen.add(url)
-    return true
-  })
+    // Step 2 — resolve article URLs from each source
+    log("Step 2/8 — Resolving article URLs")
+    const cutoff = new Date(Date.now() - THREE_DAYS_MS)
+    const allItems: { url: string; pubDate: Date | null; sourceId: string; sourceName: string }[] =
+      []
 
-  stats.urls_found = uniqueItems.length
-  log(`${stats.urls_found} unique URLs (${stats.too_old} filtered as too old)`)
+    const sourceResults = await runWithConcurrencyLimit(sources, 5, async (source) => {
+      log(`Source: ${source.name ?? source.url}`)
+      try {
+        const items = await resolveSourceUrls(source, log)
+        let tooOld = 0
+        const keptItems: {
+          url: string
+          pubDate: Date | null
+          sourceId: string
+          sourceName: string
+        }[] = []
+        for (const item of items) {
+          if (item.pubDate && item.pubDate < cutoff) {
+            tooOld++
+            continue
+          }
+          keptItems.push({ ...item, sourceId: source.id, sourceName: source.name })
+        }
+        log(
+          `  ${source.name}: ${items.length} items (${tooOld} too old, ${items.length - tooOld} kept)`
+        )
+        return { keptItems, tooOld }
+      } catch (e) {
+        log(`  Error resolving ${source.name ?? source.url}: ${(e as Error).message}`)
+        return { keptItems: [], tooOld: 0 }
+      }
+    })
 
-  // Step 3 — dedup against Firestore
-  log("Step 3/8 — Deduplicating against existing articles")
-  const hashes = uniqueItems.map(({ url }) => sha256(url))
-  const refs = hashes.map((h) => db.collection("articles").doc(h))
-  const BATCH_SIZE = 500
-  const snapBatches = await Promise.all(
-    Array.from({ length: Math.ceil(refs.length / BATCH_SIZE) }, (_, i) =>
-      db.getAll(...refs.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE))
+    for (const res of sourceResults) {
+      allItems.push(...res.keptItems)
+      stats.too_old += res.tooOld
+    }
+
+    // deduplicate URLs across sources
+    const seen = new Set<string>()
+    const uniqueItems = allItems.filter(({ url }) => {
+      if (seen.has(url)) return false
+      seen.add(url)
+      return true
+    })
+
+    stats.urls_found = uniqueItems.length
+    log(`${stats.urls_found} unique URLs (${stats.too_old} filtered as too old)`)
+
+    // Step 3 — dedup against Firestore
+    log("Step 3/8 — Deduplicating against existing articles")
+    const hashes = uniqueItems.map(({ url }) => sha256(url))
+    const refs = hashes.map((h) => db.collection("articles").doc(h))
+    const BATCH_SIZE = 500
+    const snapBatches = await Promise.all(
+      Array.from({ length: Math.ceil(refs.length / BATCH_SIZE) }, (_, i) =>
+        db.getAll(...refs.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE))
+      )
     )
-  )
-  const snaps = snapBatches.flat()
-  const newItems = uniqueItems.filter((_, i) => !snaps[i].exists)
-  log(
-    `${newItems.length} new URLs to scrape (${uniqueItems.length - newItems.length} already ingested)`
-  )
+    const snaps = snapBatches.flat()
+    const newItems = uniqueItems.filter((_, i) => !snaps[i].exists)
+    log(
+      `${newItems.length} new URLs to scrape (${uniqueItems.length - newItems.length} already ingested)`
+    )
 
-  // Step 4 — scrape articles
-  log("Step 4/8 — Scraping articles")
-  const domainLastFetch: Record<string, number> = {}
-  const rawArticleIds: string[] = []
+    // Step 4 — scrape articles
+    log("Step 4/8 — Scraping articles")
 
-  for (const { url, pubDate: feedPubDate } of newItems) {
-    const domain = hostname(url)
-    const last = domainLastFetch[domain]
-    if (last && Date.now() - last < DOMAIN_DELAY_MS) {
-      await sleep(DOMAIN_DELAY_MS - (Date.now() - last))
+    // Group newItems by domain to parallelize across domains while keeping same-domain scrapings sequential
+    const itemsByDomain: Record<string, typeof newItems> = {}
+    for (const item of newItems) {
+      const domain = hostname(item.url)
+      if (!itemsByDomain[domain]) {
+        itemsByDomain[domain] = []
+      }
+      itemsByDomain[domain].push(item)
     }
-    domainLastFetch[domain] = Date.now()
 
-    const hash = sha256(url)
+    const domains = Object.keys(itemsByDomain)
+    const MAX_CONCURRENT_DOMAINS = 5
+    const domainLastFetch: Record<string, number> = {}
+    const rawArticleIds: string[] = []
 
-    try {
-      log(`  Scraping: ${url}`)
-      const scraped = await fetchArticle(url)
+    await runWithConcurrencyLimit(domains, MAX_CONCURRENT_DOMAINS, async (domain) => {
+      const items = itemsByDomain[domain]
+      log(`Starting queue for domain ${domain} (${items.length} items)`)
 
-      // post-scrape date filter for page-sourced items (no feedPubDate)
-      if (!feedPubDate && scraped.pubDate && scraped.pubDate < cutoff) {
-        log(`  Too old: ${url}`)
-        stats.too_old++
-        continue
-      }
-
-      // Firecrawl fallback for JS-rendered pages (skip for Reddit — low count is expected for image posts)
-      let bodyMd = scraped.markdown
-      if (
-        scraped.wordCount < 50 &&
-        process.env.FIRECRAWL_API_KEY &&
-        !hostname(url).includes("reddit.com")
-      ) {
-        log(`  Low word count — trying Firecrawl fallback`)
-        const fc = await firecrawlFetch(url)
-        if (fc) bodyMd = fc
-      }
-
-      if (!bodyMd) {
-        log(`  No content extracted — marking as fetch_failed`)
-        await writeFailedArticle(hash, url, domain)
-        continue
-      }
-
-      const pubDate = feedPubDate ?? scraped.pubDate ?? null
-      const id = await saveRawArticle({
-        url,
-        urlHash: hash,
-        title: scraped.title,
-        domain,
-        bodyMd: bodyMd.slice(0, MAX_BODY_CHARS),
-        excerpt: scraped.excerpt.slice(0, 500),
-        pubDate,
-      })
-      rawArticleIds.push(id)
-      stats.new_articles++
-      log(`  Saved: "${scraped.title || url}"`)
-    } catch (e) {
-      if (e instanceof HttpError && (e.status === 403 || e.status === 429)) {
-        log(`  HTTP ${e.status} — trying CloakBrowser fallback`)
-        let fallbackMd = await cloakbrowserFetch(url)
-        let fallbackSource = "CloakBrowser"
-
-        if (!fallbackMd && process.env.FIRECRAWL_API_KEY) {
-          log(`  CloakBrowser failed — trying Firecrawl fallback`)
-          fallbackMd = await firecrawlFetch(url)
-          fallbackSource = "Firecrawl"
+      for (const { url, pubDate: feedPubDate, sourceId, sourceName } of items) {
+        const last = domainLastFetch[domain]
+        if (last && Date.now() - last < DOMAIN_DELAY_MS) {
+          await sleep(DOMAIN_DELAY_MS - (Date.now() - last))
         }
+        domainLastFetch[domain] = Date.now()
 
-        if (fallbackMd) {
+        const hash = sha256(url)
+
+        try {
+          log(`  Scraping [${domain}]: ${url}`)
+          const scraped = await fetchArticle(url)
+
+          // post-scrape date filter for page-sourced items (no feedPubDate)
+          if (!feedPubDate && scraped.pubDate && scraped.pubDate < cutoff) {
+            log(`  Too old [${domain}]: ${url}`)
+            stats.too_old++
+            continue
+          }
+
+          // Firecrawl fallback for JS-rendered pages (skip for Reddit — low count is expected for image posts)
+          let bodyMd = scraped.markdown
+          if (
+            scraped.wordCount < 50 &&
+            process.env.FIRECRAWL_API_KEY &&
+            !domain.includes("reddit.com")
+          ) {
+            log(`  Low word count [${domain}] — trying Firecrawl fallback`)
+            const fc = await firecrawlFetch(url)
+            if (fc) bodyMd = fc
+          }
+
+          if (!bodyMd) {
+            log(`  No content extracted [${domain}] — marking as fetch_failed`)
+            await writeFailedArticle(hash, url, domain, sourceId, sourceName)
+            continue
+          }
+
+          const pubDate = feedPubDate ?? scraped.pubDate ?? null
           const id = await saveRawArticle({
             url,
             urlHash: hash,
-            title: "",
+            title: scraped.title,
             domain,
-            bodyMd: fallbackMd.slice(0, MAX_BODY_CHARS),
-            excerpt: fallbackMd.slice(0, 500),
-            pubDate: feedPubDate ?? null,
+            sourceId,
+            sourceName,
+            bodyMd: bodyMd.slice(0, MAX_BODY_CHARS),
+            excerpt: scraped.excerpt.slice(0, 500),
+            pubDate,
           })
           rawArticleIds.push(id)
           stats.new_articles++
-          log(`  Saved via ${fallbackSource}: ${url}`)
-        } else {
-          log(`  All fallbacks failed — will retry next run: ${url}`)
+          log(`  Saved: "${scraped.title || url}"`)
+        } catch (e) {
+          if (e instanceof HttpError && (e.status === 403 || e.status === 429)) {
+            log(`  HTTP ${e.status} [${domain}] — trying CloakBrowser fallback`)
+            let fallbackMd = await cloakbrowserFetch(url)
+            let fallbackSource = "CloakBrowser"
+
+            if (!fallbackMd && process.env.FIRECRAWL_API_KEY) {
+              log(`  CloakBrowser failed [${domain}] — trying Firecrawl fallback`)
+              fallbackMd = await firecrawlFetch(url)
+              fallbackSource = "Firecrawl"
+            }
+
+            if (fallbackMd) {
+              const id = await saveRawArticle({
+                url,
+                urlHash: hash,
+                title: "",
+                domain,
+                sourceId,
+                sourceName,
+                bodyMd: fallbackMd.slice(0, MAX_BODY_CHARS),
+                excerpt: fallbackMd.slice(0, 500),
+                pubDate: feedPubDate ?? null,
+              })
+              rawArticleIds.push(id)
+              stats.new_articles++
+              log(`  Saved via ${fallbackSource}: ${url}`)
+            } else {
+              log(`  All fallbacks failed [${domain}] — will retry next run: ${url}`)
+            }
+          } else if (e instanceof HttpError && e.status >= 500) {
+            log(`  HTTP ${e.status} [${domain}] — will retry next run: ${url}`)
+          } else if (e instanceof HttpError) {
+            log(`  HTTP ${e.status} [${domain}] — marking as failed: ${url}`)
+            await writeFailedArticle(hash, url, domain, sourceId, sourceName)
+          } else {
+            log(`  Error scraping ${url} [${domain}]: ${(e as Error).message}`)
+            await writeFailedArticle(hash, url, domain, sourceId, sourceName)
+          }
         }
-      } else if (e instanceof HttpError && e.status >= 500) {
-        log(`  HTTP ${e.status} — will retry next run: ${url}`)
-      } else if (e instanceof HttpError) {
-        log(`  HTTP ${e.status} — marking as failed: ${url}`)
-        await writeFailedArticle(hash, url, domain)
-      } else {
-        log(`  Error scraping ${url}: ${(e as Error).message}`)
-        await writeFailedArticle(hash, url, domain)
       }
-    }
+    })
+
+    log(`Scraped ${stats.new_articles} article${stats.new_articles === 1 ? "" : "s"}`)
+
+    await runAiPipeline(rawArticleIds, stats, log)
+
+    stats.duration_ms = Date.now() - start
+    return stats
+  } finally {
+    await releaseIngestLock()
   }
-
-  log(`Scraped ${stats.new_articles} article${stats.new_articles === 1 ? "" : "s"}`)
-
-  await runAiPipeline(rawArticleIds, stats, log)
-
-  stats.duration_ms = Date.now() - start
-  return stats
 }
 
 async function saveRawArticle(fields: {
@@ -358,6 +449,8 @@ async function saveRawArticle(fields: {
   urlHash: string
   title: string
   domain: string
+  sourceId: string
+  sourceName: string
   bodyMd: string
   excerpt: string
   pubDate: Date | null
@@ -372,21 +465,31 @@ async function saveRawArticle(fields: {
       embedding: [],
       status: "raw",
       ingestedAt: FieldValue.serverTimestamp(),
+      expireAt: getTtlExpirationDate(),
     })
   return urlHash
 }
 
-async function writeFailedArticle(urlHash: string, url: string, domain: string) {
+async function writeFailedArticle(
+  urlHash: string,
+  url: string,
+  domain: string,
+  sourceId: string,
+  sourceName: string
+) {
   await db.collection("articles").doc(urlHash).set({
     url,
     title: "",
     domain,
+    sourceId,
+    sourceName,
     bodyMd: "",
     excerpt: "",
     relevanceScore: 0,
     embedding: [],
     status: "fetch_failed",
     ingestedAt: FieldValue.serverTimestamp(),
+    expireAt: getTtlExpirationDate(),
   })
 }
 
@@ -476,22 +579,24 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
     const batch = allRawIds.slice(i, i + BATCH)
     const docs = await Promise.all(batch.map((id) => db.collection("articles").doc(id).get()))
 
-    for (const doc of docs) {
-      if (!doc.exists) continue
-      const data = doc.data()!
-      const score = await scoreRelevance(data.title, data.excerpt)
-      if (score === null) {
-        log(`  Score failed for "${data.title}" — left as raw, will retry next ingestion`)
-      } else if (score < 5) {
-        await doc.ref.update({ status: "discarded", relevanceScore: score })
-        stats.discarded++
-        log(`  Discarded (score ${score}/10): "${data.title}"`)
-      } else {
-        await doc.ref.update({ status: "scored", relevanceScore: score })
-        scoredIds.push(doc.id)
-        log(`  Relevant (score ${score}/10): "${data.title}"`)
-      }
-    }
+    await Promise.all(
+      docs.map(async (doc) => {
+        if (!doc.exists) return
+        const data = doc.data()!
+        const score = await scoreRelevance(data.title, data.excerpt)
+        if (score === null) {
+          log(`  Score failed for "${data.title}" — left as raw, will retry next ingestion`)
+        } else if (score < 5) {
+          await doc.ref.update({ status: "discarded", relevanceScore: score })
+          stats.discarded++
+          log(`  Discarded (score ${score}/10): "${data.title}"`)
+        } else {
+          await doc.ref.update({ status: "scored", relevanceScore: score })
+          scoredIds.push(doc.id)
+          log(`  Relevant (score ${score}/10): "${data.title}"`)
+        }
+      })
+    )
   }
   log(`Scoring done: ${scoredIds.length} relevant, ${stats.discarded} discarded`)
 
@@ -499,9 +604,9 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
   log("Step 6/8 — Generating embeddings")
   const articlesWithEmbedding: ArticleWithEmbedding[] = []
 
-  for (const id of scoredIds) {
+  await runWithConcurrencyLimit(scoredIds, 10, async (id) => {
     const doc = await db.collection("articles").doc(id).get()
-    if (!doc.exists) continue
+    if (!doc.exists) return
     const data = doc.data()!
     try {
       const embedding = await embed(`${data.title}\n\n${data.excerpt}`)
@@ -511,6 +616,8 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
         title: data.title,
         url: data.url,
         domain: data.domain,
+        sourceId: data.sourceId ?? "",
+        sourceName: data.sourceName ?? "",
         excerpt: data.excerpt,
         relevanceScore: data.relevanceScore,
         embedding,
@@ -520,7 +627,7 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
     } catch (e) {
       log(`  Embedding failed for "${data.title}": ${(e as Error).message}`)
     }
-  }
+  })
   log(`Embedded ${articlesWithEmbedding.length} articles`)
 
   // Step 7 — cluster (cross-run: check new articles against recent existing clusters first)
@@ -539,7 +646,7 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
 
   const newArticleIds = new Set(articlesWithEmbedding.map((a) => a.id))
 
-  const { newClusters, updatedClusters } = clusterWithExisting(
+  const { newClusters, updatedClusters, alreadyClustered } = clusterWithExisting(
     articlesWithEmbedding,
     existingForClustering
   )
@@ -550,24 +657,35 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
   log(
     `${newClusters.length} new clusters (${singletons} singletons), ${updatedClusters.length} existing clusters updated`
   )
+  if (alreadyClustered.length > 0)
+    log(`${alreadyClustered.length} article(s) already in existing clusters — fixing status`)
 
   // Step 8 — summarise new clusters and update existing ones
   log("Step 8/8 — Summarising and writing clusters")
 
+  // Fix status for articles already present in existing clusters (stuck from a crashed prior run)
+  await Promise.all(
+    alreadyClustered
+      .filter((a) => newArticleIds.has(a.id))
+      .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
+  )
+
   // Update existing clusters that gained new articles
-  for (const updated of updatedClusters) {
-    const allArticles = updated.articles.map(toClusterArticle)
-    await updateCluster(updated.id, allArticles, updated.centroid)
-    await Promise.all(
-      updated.articles
-        .filter((a) => newArticleIds.has(a.id))
-        .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
-    )
-    log(`  Updated existing cluster with ${updated.articles.length} total articles`)
-  }
+  await Promise.all(
+    updatedClusters.map(async (updated) => {
+      const allArticles = updated.articles.map(toClusterArticle)
+      await updateCluster(updated.id, allArticles, updated.centroid)
+      await Promise.all(
+        updated.articles
+          .filter((a) => newArticleIds.has(a.id))
+          .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
+      )
+      log(`  Updated existing cluster with ${updated.articles.length} total articles`)
+    })
+  )
 
   // Write new clusters
-  for (const cluster of newClusters) {
+  await runWithConcurrencyLimit(newClusters, 5, async (cluster) => {
     const clusterArticlesData = cluster.articles.map(toClusterArticle)
 
     let summary = clusterArticlesData[0].excerpt
@@ -579,11 +697,15 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
       log(
         `  Summarising cluster: "${cluster.articles[0].title}" + ${cluster.articles.length - 1} more`
       )
-      const result = await summariseCluster(cluster.articles)
-      summary = result.summary
-      topicTag = result.topicTag
-      sentiment = result.sentiment
-      entities = result.entities
+      try {
+        const result = await summariseCluster(cluster.articles)
+        summary = result.summary
+        topicTag = result.topicTag
+        sentiment = result.sentiment
+        entities = result.entities
+      } catch (e) {
+        log(`  Summarising cluster failed, using default: ${(e as Error).message}`)
+      }
     }
 
     const publishedAt = cluster.articles.find((a) => a.pubDate)?.pubDate ?? new Date()
@@ -599,6 +721,7 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
       articleCount: cluster.articles.length,
       publishedAt,
       createdAt: FieldValue.serverTimestamp(),
+      expireAt: getTtlExpirationDate(),
     })
 
     await Promise.all(
@@ -606,7 +729,8 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
         db.collection("articles").doc(a.id).update({ status: "clustered" })
       )
     )
-  }
+  })
+
   log(
     `Written ${newClusters.length} new cluster${newClusters.length === 1 ? "" : "s"}, updated ${updatedClusters.length} existing`
   )

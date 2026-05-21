@@ -29,7 +29,17 @@ const TAG_LABELS: Record<string, string> = {
 
 function ClusterCard({ cluster }: { cluster: Cluster }) {
   const [summaryOpen, setSummaryOpen] = useState(false)
-  const lead = cluster.articles[0]
+  const uniqueArticles = useMemo(() => {
+    const seen = new Set<string>()
+    return cluster.articles.filter((a) => {
+      if (!a.id) return true
+      if (seen.has(a.id)) return false
+      seen.add(a.id)
+      return true
+    })
+  }, [cluster.articles])
+
+  const lead = uniqueArticles[0]
   const leadTitle = lead?.title ?? "Untitled"
 
   return (
@@ -61,7 +71,7 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
       ) : (
         <div className="flex items-center gap-2">
           <div className="flex -space-x-1 shrink-0">
-            {cluster.articles.slice(0, 4).map((a) => (
+            {uniqueArticles.slice(0, 4).map((a) => (
               <DomainIcon key={a.id} domain={a.domain} />
             ))}
           </div>
@@ -94,7 +104,7 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
               </p>
               {!cluster.isSingleton && (
                 <div className="space-y-1.5 pt-1">
-                  {cluster.articles.map((article) => (
+                  {uniqueArticles.map((article) => (
                     <div key={article.id} className="flex items-center gap-2">
                       <DomainIcon domain={article.domain} />
                       <a

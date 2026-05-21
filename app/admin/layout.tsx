@@ -1,3 +1,4 @@
+import Link from "next/link"
 import type React from "react"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -5,12 +6,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
         <div
-          className="mx-auto flex items-center px-6"
+          className="mx-auto flex items-center justify-between px-6"
           style={{ maxWidth: "1224px", height: "38px" }}
         >
           <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
             Admin
           </span>
+          <Link
+            href="/"
+            className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+          >
+            ← Back
+          </Link>
         </div>
       </header>
       <main className="mx-auto px-6 py-8" style={{ maxWidth: "1224px" }}>

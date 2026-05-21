@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 export function Header() {
   const today = new Date()
     .toLocaleDateString("en-US", {
@@ -14,8 +16,21 @@ export function Header() {
         className="mx-auto flex items-center justify-between px-6"
         style={{ maxWidth: "1224px", height: "38px" }}
       >
-        <h1 className="font-newsreader text-xl leading-none text-foreground">AI News Hub</h1>
-        <span className="font-mono text-xs text-muted-foreground hidden sm:block">{today}</span>
+        <Link
+          href="/"
+          className="font-newsreader text-xl leading-none text-foreground hover:text-muted-foreground transition-colors"
+        >
+          AI News Hub
+        </Link>
+        <div className="flex items-center gap-4">
+          <span className="font-mono text-xs text-muted-foreground hidden sm:block">{today}</span>
+          <Link
+            href="/admin"
+            className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors border border-border px-2 py-0.5"
+          >
+            Admin
+          </Link>
+        </div>
       </div>
     </header>
   )
