@@ -167,8 +167,8 @@ export function toClusterArticle(a: ArticleWithEmbedding): ClusterArticle {
     title: a.title,
     url: a.url,
     domain: a.domain,
-    sourceId: a.sourceId,
-    sourceName: a.sourceName,
+    sourceId: a.sourceId ?? "",
+    sourceName: a.sourceName ?? "",
     excerpt: a.excerpt,
     relevanceScore: a.relevanceScore,
   }
