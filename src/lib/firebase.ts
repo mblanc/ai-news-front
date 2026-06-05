@@ -1,5 +1,5 @@
 import { Firestore, FieldValue, type QueryDocumentSnapshot } from "@google-cloud/firestore"
-import type { Cluster, ClusterArticle, Source } from "@/lib/types"
+import type { Cluster, ClusterArticle, Digest, Source } from "@/lib/types"
 
 // Initialize Google Cloud Firestore
 // For production, you should use service account credentials
@@ -110,6 +110,30 @@ export async function getRecentClusterCentroids(days = 3): Promise<StoredCluster
   } catch (error) {
     console.error("Error fetching cluster centroids:", error)
     return []
+  }
+}
+
+export async function saveDigest(digest: Omit<Digest, "generatedAt"> & { generatedAt: Date }): Promise<void> {
+  await db.collection("digest").doc("latest").set({
+    headline: digest.headline,
+    insights: digest.insights,
+    generatedAt: digest.generatedAt,
+  })
+}
+
+export async function getLatestDigest(): Promise<Digest | null> {
+  try {
+    const doc = await db.collection("digest").doc("latest").get()
+    if (!doc.exists) return null
+    const d = doc.data()!
+    return {
+      headline: d.headline ?? "",
+      insights: d.insights ?? [],
+      generatedAt: d.generatedAt?.toDate?.() ?? new Date(),
+    }
+  } catch (error) {
+    console.error("Error fetching digest:", error)
+    return null
   }
 }
 

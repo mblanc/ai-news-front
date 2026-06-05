@@ -8,6 +8,7 @@ import { NewsList } from "@/components/news-list"
 import { LoadingSkeleton } from "@/components/loading-skeleton"
 import { ThemeProvider } from "@/components/theme-provider"
 import { useClusterFilters } from "@/hooks/use-news-filters"
+import { DailyDigest } from "@/components/daily-digest"
 import type { Cluster } from "@/lib/types"
 
 function dayStart(d: Date): Date {
@@ -186,6 +187,8 @@ export default function HomePage() {
                   <LoadingSkeleton />
                 ) : (
                   <div className="space-y-6">
+                    {!searchQuery && <DailyDigest />}
+
                     <div className="flex items-baseline justify-between border-b border-border pb-3">
                       <h2 className="font-newsreader text-2xl sm:text-3xl text-foreground">
                         {searchQuery ? `Results for "${searchQuery}"` : "Latest AI Stories"}

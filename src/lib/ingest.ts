@@ -12,7 +12,13 @@ import {
   type ArticleWithEmbedding,
   type ExistingCluster,
 } from "@/lib/cluster"
-import { getRecentClusterCentroids, updateCluster, getTtlExpirationDate } from "@/lib/firebase"
+import {
+  getRecentClusterCentroids,
+  getClustersByDateRange,
+  updateCluster,
+  saveDigest,
+  getTtlExpirationDate,
+} from "@/lib/firebase"
 import type { Source, TopicTag, Sentiment } from "@/lib/types"
 
 const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.1-flash-lite"
@@ -391,7 +397,7 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
           stats.new_articles++
           log(`  Saved: "${scraped.title || url}"`)
         } catch (e) {
-          if (e instanceof HttpError && (e.status === 403 || e.status === 429)) {
+          if (e instanceof HttpError && (e.status === 403 || e.status === 429) && !domain.includes("reddit.com")) {
             log(`  HTTP ${e.status} [${domain}] — trying CloakBrowser fallback`)
             let fallbackMd = await cloakbrowserFetch(url)
             let fallbackSource = "CloakBrowser"
@@ -734,6 +740,68 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
   log(
     `Written ${newClusters.length} new cluster${newClusters.length === 1 ? "" : "s"}, updated ${updatedClusters.length} existing`
   )
+
+  log("Step 9/9 — Generating digest")
+  try {
+    await generateAndSaveDigest(log)
+  } catch (e) {
+    log(`Digest generation failed (non-fatal): ${(e as Error).message}`)
+  }
+}
+
+async function generateAndSaveDigest(log: (msg: string) => void): Promise<void> {
+  const now = new Date()
+  const start = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+  const clusters = await getClustersByDateRange(start, now)
+
+  if (clusters.length === 0) {
+    log("  No clusters for digest — skipping")
+    return
+  }
+
+  const clusterLines = clusters
+    .slice(0, 60)
+    .map((c) => {
+      const entities = c.entities.length > 0 ? ` [${c.entities.slice(0, 4).join(", ")}]` : ""
+      return `- [${c.topicTag}]${entities} ${c.summary}`
+    })
+    .join("\n")
+
+  const prompt = `You are an AI news analyst. Based on the following AI news stories from the last 3 days, write a concise digest for a technically sophisticated audience.
+
+NEWS STORIES:
+${clusterLines}
+
+Return a JSON object with exactly this shape:
+{
+  "headline": "A single punchy sentence capturing the most important theme or shift in the last 3 days",
+  "insights": [
+    "Insight 1 — a specific, non-obvious observation about a trend, pattern, or implication",
+    "Insight 2",
+    "Insight 3"
+  ]
+}
+
+Rules:
+- 3 to 5 insights, each 1-2 sentences
+- Be analytical and specific, not generic ("AI is advancing quickly" is not an insight)
+- Ground each insight in specific companies, models, or events from the news
+- Highlight tensions, surprises, patterns, or implications a busy reader might miss`
+
+  const response = await ai.models.generateContent({
+    model: INGEST_MODEL,
+    contents: prompt,
+    config: { responseMimeType: "application/json" },
+  })
+
+  const parsed = JSON.parse(response.text ?? "{}")
+  const headline = typeof parsed.headline === "string" ? parsed.headline : ""
+  const insights = Array.isArray(parsed.insights)
+    ? parsed.insights.filter((i: unknown): i is string => typeof i === "string")
+    : []
+
+  await saveDigest({ headline, insights, generatedAt: now })
+  log(`  Digest saved: "${headline.slice(0, 60)}…"`)
 }
 
 async function scoreRelevance(title: string, excerpt: string): Promise<number | null> {

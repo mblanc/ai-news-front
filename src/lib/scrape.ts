@@ -57,19 +57,59 @@ function isRedditUrl(url: string): boolean {
   return hostname === "reddit.com" || hostname === "www.reddit.com" || hostname === "old.reddit.com"
 }
 
+let redditTokenCache: { token: string; expiresAt: number } | null = null
+
+async function getRedditAccessToken(): Promise<string | null> {
+  const clientId = process.env.REDDIT_CLIENT_ID
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET
+  if (!clientId || !clientSecret) return null
+
+  if (redditTokenCache && Date.now() < redditTokenCache.expiresAt) {
+    return redditTokenCache.token
+  }
+
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64")
+  const response = await fetch("https://www.reddit.com/api/v1/access_token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "User-Agent": REDDIT_USER_AGENT,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  })
+
+  if (!response.ok) {
+    throw new Error(`Reddit OAuth failed: HTTP ${response.status}`)
+  }
+
+  const data = await response.json()
+  // Cache with a 60s safety margin before expiry
+  redditTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in - 60) * 1000,
+  }
+  return redditTokenCache.token
+}
+
 async function fetchRedditPost(url: string): Promise<ScrapedArticle> {
-  // Normalise to reddit.com and append .json
   const parsed = new URL(url)
-  parsed.hostname = "www.reddit.com"
   parsed.search = ""
-  const jsonUrl = parsed.pathname.replace(/\/?$/, ".json")
-  const apiUrl = `https://www.reddit.com${jsonUrl}`
+  const pathname = parsed.pathname.replace(/\/?$/, ".json")
+
+  const token = await getRedditAccessToken()
+  // Use oauth.reddit.com with a Bearer token when credentials are available,
+  // fall back to the unauthenticated www endpoint otherwise
+  const apiUrl = token
+    ? `https://oauth.reddit.com${pathname}`
+    : `https://www.reddit.com${pathname}`
+
+  const headers: Record<string, string> = { "User-Agent": REDDIT_USER_AGENT }
+  if (token) headers["Authorization"] = `Bearer ${token}`
 
   let response: Response
   try {
-    response = await fetch(apiUrl, {
-      headers: { "User-Agent": REDDIT_USER_AGENT },
-    })
+    response = await fetch(apiUrl, { headers })
   } catch (error) {
     throw new Error(`Network error fetching ${apiUrl}: ${(error as Error).message}`)
   }

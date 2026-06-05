@@ -67,3 +67,9 @@ export interface Cluster {
   publishedAt: Date
   expireAt?: Date
 }
+
+export interface Digest {
+  headline: string
+  insights: string[]
+  generatedAt: Date
+}
