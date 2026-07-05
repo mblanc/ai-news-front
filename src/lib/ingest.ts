@@ -26,11 +26,18 @@ const THREE_DAYS_MS = 72 * 60 * 60 * 1000
 const MAX_BODY_CHARS = 50_000
 const DOMAIN_DELAY_MS = 500
 
-const ai = new GoogleGenAI({
-  enterprise: true,
-  project: process.env.GOOGLE_CLOUD_PROJECT_ID,
-  location: process.env.GOOGLE_CLOUD_LOCATION ?? "global",
-})
+let aiInstance: GoogleGenAI | null = null
+
+function getAi() {
+  if (!aiInstance) {
+    aiInstance = new GoogleGenAI({
+      enterprise: true,
+      project: process.env.GOOGLE_CLOUD_PROJECT_ID,
+      location: process.env.GOOGLE_CLOUD_LOCATION ?? "global",
+    })
+  }
+  return aiInstance
+}
 
 export interface IngestStats {
   duration_ms: number
@@ -107,7 +114,7 @@ Ignore pagination, tag, category, and author links.
 Content:
 ${markdown.slice(0, 8000)}`
 
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: INGEST_MODEL,
     contents: prompt,
     config: { responseMimeType: "application/json" },
@@ -136,11 +143,24 @@ async function resolveSourceUrls(
   source: Source,
   log: (msg: string) => void
 ): Promise<{ url: string; pubDate: Date | null }[]> {
-  if (source.type === "rss" || source.feedUrl) {
+  const isRssUrl = (url: string) => {
+    const lower = url.toLowerCase()
+    return (
+      lower.includes(".rss") ||
+      lower.includes("/rss") ||
+      lower.endsWith("/feed") ||
+      lower.includes("/feed/") ||
+      lower.includes("/atom") ||
+      lower.endsWith(".xml")
+    )
+  }
+
+  if (source.type === "rss" || source.feedUrl || isRssUrl(source.url)) {
     const feedUrl = source.feedUrl ?? source.url
     log(`  RSS feed: ${feedUrl}`)
     return parseRssFeed(feedUrl)
   }
+
 
   // page source — try RSS autodiscovery first
   assertSafeUrl(source.url)
@@ -788,7 +808,7 @@ Rules:
 - Ground each insight in specific companies, models, or events from the news
 - Highlight tensions, surprises, patterns, or implications a busy reader might miss`
 
-  const response = await ai.models.generateContent({
+  const response = await getAi().models.generateContent({
     model: INGEST_MODEL,
     contents: prompt,
     config: { responseMimeType: "application/json" },
@@ -811,7 +831,7 @@ Article title: ${title}
 Excerpt: ${excerpt}`
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: INGEST_MODEL,
       contents: prompt,
       config: { responseMimeType: "application/json" },
@@ -863,7 +883,7 @@ Articles:
 ${articleList}`
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await getAi().models.generateContent({
       model: INGEST_MODEL,
       contents: prompt,
       config: { responseMimeType: "application/json" },

@@ -50,12 +50,13 @@ const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 // Reddit requires a descriptive User-Agent per their API rules
-const REDDIT_USER_AGENT = "ai-news-aggregator/1.0 (by /u/ai-news-bot)"
+export const REDDIT_USER_AGENT = "ai-news-aggregator/1.0 (by /u/ai-news-bot)"
 
-function isRedditUrl(url: string): boolean {
+export function isRedditUrl(url: string): boolean {
   const { hostname } = new URL(url)
   return hostname === "reddit.com" || hostname === "www.reddit.com" || hostname === "old.reddit.com"
 }
+
 
 let redditTokenCache: { token: string; expiresAt: number } | null = null
 

@@ -29,10 +29,8 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED 1
 # ENV NEXT_PUBLIC_CHAT_API="https://bob2back-idvt3gzwzq-uc.a.run.app/api/chat"
 
-RUN yarn build
+RUN npm run build
 
-# If using npm comment out above and use below instead
-# RUN npm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner

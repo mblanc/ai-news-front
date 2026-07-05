@@ -3,7 +3,11 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(req: NextRequest) {
   const secret = process.env.CRON_SECRET
-  if (!secret || req.headers.get("authorization") !== `Bearer ${secret}`) {
+  const authHeader = req.headers.get("authorization")
+  const xCronSecret = req.headers.get("x-cron-secret")
+  const receivedSecret = authHeader === `Bearer ${secret}` || xCronSecret === secret
+
+  if (!secret || !receivedSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 

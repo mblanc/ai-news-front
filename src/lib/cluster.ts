@@ -1,14 +1,20 @@
 import { GoogleGenAI } from "@google/genai"
 import type { ClusterArticle } from "@/lib/types"
 
-const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID
-const LOCATION = process.env.GOOGLE_CLOUD_LOCATION ?? "global"
+let aiInstance: GoogleGenAI | null = null
 
-const ai = new GoogleGenAI({
-  enterprise: true,
-  project: PROJECT_ID,
-  location: LOCATION,
-})
+function getAi() {
+  if (!aiInstance) {
+    const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT_ID
+    const LOCATION = process.env.GOOGLE_CLOUD_LOCATION ?? "global"
+    aiInstance = new GoogleGenAI({
+      enterprise: true,
+      project: PROJECT_ID,
+      location: LOCATION,
+    })
+  }
+  return aiInstance
+}
 
 const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL ?? "gemini-embedding-2"
 const CLUSTER_THRESHOLD = 0.82
@@ -45,7 +51,7 @@ export interface ClusteringResult {
 }
 
 export async function embed(text: string): Promise<number[]> {
-  const response = await ai.models.embedContent({
+  const response = await getAi().models.embedContent({
     model: EMBEDDING_MODEL,
     contents: text,
     config: {

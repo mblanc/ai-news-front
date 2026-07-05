@@ -1,5 +1,5 @@
 import Parser from "rss-parser"
-import { assertSafeUrl } from "@/lib/scrape"
+import { assertSafeUrl, isRedditUrl, REDDIT_USER_AGENT } from "@/lib/scrape"
 
 export interface RssItem {
   url: string
@@ -20,8 +20,13 @@ const BROWSER_HEADERS = {
 
 async function fetchFeedXml(feedUrl: string): Promise<string> {
   assertSafeUrl(feedUrl)
-  const res = await fetch(feedUrl, { headers: BROWSER_HEADERS })
+  const headers = { ...BROWSER_HEADERS }
+  if (isRedditUrl(feedUrl)) {
+    headers["User-Agent"] = REDDIT_USER_AGENT
+  }
+  const res = await fetch(feedUrl, { headers })
   if (res.ok) return res.text()
+
 
   // Firecrawl fallback for bot-protected feeds
   if (process.env.FIRECRAWL_API_KEY && (res.status === 403 || res.status === 429)) {
