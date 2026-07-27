@@ -68,8 +68,20 @@ export interface Cluster {
   expireAt?: Date
 }
 
+export interface DigestSource {
+  title: string
+  url: string
+  domain: string
+  sourceName?: string
+}
+
+export interface GroundedInsight {
+  text: string
+  sources: DigestSource[]
+}
+
 export interface Digest {
   headline: string
-  insights: string[]
+  insights: (string | GroundedInsight)[]
   generatedAt: Date
 }

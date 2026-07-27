@@ -30,7 +30,7 @@ Sources (RSS + web) → Scrape URLs → Deduplicate → Scrape content → Score
 → Generate embeddings → Cluster by similarity → Summarize clusters → Firestore → Frontend
 ```
 
-The 8-step ingestion pipeline lives in `lib/ingest.ts`. It runs hourly via a node-cron job started in `instrumentation.ts` (Next.js instrumentation hook), and can also be triggered manually via `POST /api/ingest` (SSE streaming) or `POST /api/cron/ingest` (authenticated, used by Cloud Scheduler).
+The 9-step ingestion pipeline lives in `lib/ingest.ts`. It runs hourly via a node-cron job started in `instrumentation.ts` (Next.js instrumentation hook), and can also be triggered manually via `POST /api/ingest` (SSE streaming) or `POST /api/cron/ingest` (authenticated, used by Cloud Scheduler).
 
 ### Key Directories
 

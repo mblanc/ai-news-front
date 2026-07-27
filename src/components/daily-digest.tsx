@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { ExternalLink } from "lucide-react"
 import type { Digest } from "@/lib/types"
 
 interface DigestData extends Omit<Digest, "generatedAt"> {
@@ -73,17 +74,45 @@ export function DailyDigest() {
       )}
 
       {digest.insights.length > 0 && (
-        <ul className="space-y-2.5 border-t border-border pt-4">
-          {digest.insights.map((insight, i) => (
-            <li key={i} className="flex gap-3">
-              <span className="font-mono text-[10px] text-muted-foreground mt-1 shrink-0 tabular-nums">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <p className="font-newsreader text-base leading-snug text-muted-foreground">
-                {insight}
-              </p>
-            </li>
-          ))}
+        <ul className="space-y-3.5 border-t border-border pt-4">
+          {digest.insights.map((insight, i) => {
+            const isGrounded = typeof insight === "object" && insight !== null && "text" in insight
+            const text = isGrounded ? insight.text : insight
+            const sources = isGrounded && Array.isArray(insight.sources) ? insight.sources : []
+
+            return (
+              <li key={i} className="flex gap-3">
+                <span className="font-mono text-[10px] text-muted-foreground mt-1 shrink-0 tabular-nums">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <div className="space-y-1.5 flex-1">
+                  <p className="font-newsreader text-base leading-snug text-muted-foreground">
+                    {text}
+                  </p>
+                  {sources.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
+                        Sources:
+                      </span>
+                      {sources.map((src, sIdx) => (
+                        <a
+                          key={sIdx}
+                          href={src.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-mono text-[10px] bg-muted/60 hover:bg-muted text-foreground px-2 py-0.5 rounded border border-border/60 transition-colors group"
+                          title={src.title}
+                        >
+                          <span>{src.sourceName || src.domain || "Source"}</span>
+                          <ExternalLink className="h-2.5 w-2.5 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

@@ -19,7 +19,7 @@ import {
   saveDigest,
   getTtlExpirationDate,
 } from "@/lib/firebase"
-import type { Source, TopicTag, Sentiment } from "@/lib/types"
+import type { Source, TopicTag, Sentiment, GroundedInsight, DigestSource } from "@/lib/types"
 
 const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.1-flash-lite"
 const THREE_DAYS_MS = 72 * 60 * 60 * 1000
@@ -263,7 +263,7 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
 
   try {
     // Step 1 — load enabled sources
-    log("Step 1/8 — Loading sources")
+    log("Step 1/9 — Loading sources")
     const sourcesSnap = await db.collection("sources").where("enabled", "==", true).get()
     const sources = sourcesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Source)
     stats.sources = sources.length
@@ -275,7 +275,7 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
     log(`Found ${sources.length} enabled source${sources.length === 1 ? "" : "s"}`)
 
     // Step 2 — resolve article URLs from each source
-    log("Step 2/8 — Resolving article URLs")
+    log("Step 2/9 — Resolving article URLs")
     const cutoff = new Date(Date.now() - THREE_DAYS_MS)
     const allItems: { url: string; pubDate: Date | null; sourceId: string; sourceName: string }[] =
       []
@@ -325,7 +325,7 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
     log(`${stats.urls_found} unique URLs (${stats.too_old} filtered as too old)`)
 
     // Step 3 — dedup against Firestore
-    log("Step 3/8 — Deduplicating against existing articles")
+    log("Step 3/9 — Deduplicating against existing articles")
     const hashes = uniqueItems.map(({ url }) => sha256(url))
     const refs = hashes.map((h) => db.collection("articles").doc(h))
     const BATCH_SIZE = 500
@@ -341,7 +341,7 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
     )
 
     // Step 4 — scrape articles
-    log("Step 4/8 — Scraping articles")
+    log("Step 4/9 — Scraping articles")
 
     // Group newItems by domain to parallelize across domains while keeping same-domain scrapings sequential
     const itemsByDomain: Record<string, typeof newItems> = {}
@@ -595,174 +595,173 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
     log(`Recovered ${stuckScoredIds.length} stuck scored article(s) from previous runs`)
 
   if (allRawIds.length === 0 && stuckScoredIds.length === 0) {
-    log("No articles to process through AI pipeline")
-    return
-  }
+    log("No new articles to process through AI scoring or clustering")
+  } else {
+    // Step 5 — relevance scoring in batches of 10
+    log("Step 5/9 — Scoring relevance")
+    const BATCH = 10
+    const scoredIds: string[] = [...stuckScoredIds]
 
-  // Step 5 — relevance scoring in batches of 10
-  log("Step 5/8 — Scoring relevance")
-  const BATCH = 10
-  const scoredIds: string[] = [...stuckScoredIds]
+    for (let i = 0; i < allRawIds.length; i += BATCH) {
+      const batch = allRawIds.slice(i, i + BATCH)
+      const docs = await Promise.all(batch.map((id) => db.collection("articles").doc(id).get()))
 
-  for (let i = 0; i < allRawIds.length; i += BATCH) {
-    const batch = allRawIds.slice(i, i + BATCH)
-    const docs = await Promise.all(batch.map((id) => db.collection("articles").doc(id).get()))
-
-    await Promise.all(
-      docs.map(async (doc) => {
-        if (!doc.exists) return
-        const data = doc.data()!
-        const score = await scoreRelevance(data.title, data.excerpt)
-        if (score === null) {
-          log(`  Score failed for "${data.title}" — left as raw, will retry next ingestion`)
-        } else if (score < 5) {
-          await doc.ref.update({ status: "discarded", relevanceScore: score })
-          stats.discarded++
-          log(`  Discarded (score ${score}/10): "${data.title}"`)
-        } else {
-          await doc.ref.update({ status: "scored", relevanceScore: score })
-          scoredIds.push(doc.id)
-          log(`  Relevant (score ${score}/10): "${data.title}"`)
-        }
-      })
-    )
-  }
-  log(`Scoring done: ${scoredIds.length} relevant, ${stats.discarded} discarded`)
-
-  // Step 6 — embeddings
-  log("Step 6/8 — Generating embeddings")
-  const articlesWithEmbedding: ArticleWithEmbedding[] = []
-
-  await runWithConcurrencyLimit(scoredIds, 10, async (id) => {
-    const doc = await db.collection("articles").doc(id).get()
-    if (!doc.exists) return
-    const data = doc.data()!
-    try {
-      const embedding = await embed(`${data.title}\n\n${data.excerpt}`)
-      await doc.ref.update({ embedding })
-      articlesWithEmbedding.push({
-        id,
-        title: data.title,
-        url: data.url,
-        domain: data.domain,
-        sourceId: data.sourceId ?? "",
-        sourceName: data.sourceName ?? "",
-        excerpt: data.excerpt,
-        relevanceScore: data.relevanceScore,
-        embedding,
-        pubDate: data.pubDate?.toDate?.() ?? null,
-      })
-      log(`  Embedded: "${data.title}"`)
-    } catch (e) {
-      log(`  Embedding failed for "${data.title}": ${(e as Error).message}`)
-    }
-  })
-  log(`Embedded ${articlesWithEmbedding.length} articles`)
-
-  // Step 7 — cluster (cross-run: check new articles against recent existing clusters first)
-  log("Step 7/8 — Clustering")
-  const recentClusters = await getRecentClusterCentroids(3)
-  log(`Loaded ${recentClusters.length} recent cluster centroids`)
-
-  const existingForClustering: ExistingCluster[] = recentClusters.map((c) => ({
-    id: c.id,
-    centroid: c.centroid,
-    articles: c.articles.map((a) => ({
-      ...a,
-      embedding: [],
-    })),
-  }))
-
-  const newArticleIds = new Set(articlesWithEmbedding.map((a) => a.id))
-
-  const { newClusters, updatedClusters, alreadyClustered } = clusterWithExisting(
-    articlesWithEmbedding,
-    existingForClustering
-  )
-
-  stats.clustered = articlesWithEmbedding.length
-  stats.clusters_created = newClusters.length
-  const singletons = newClusters.filter((c) => c.isSingleton).length
-  log(
-    `${newClusters.length} new clusters (${singletons} singletons), ${updatedClusters.length} existing clusters updated`
-  )
-  if (alreadyClustered.length > 0)
-    log(`${alreadyClustered.length} article(s) already in existing clusters — fixing status`)
-
-  // Step 8 — summarise new clusters and update existing ones
-  log("Step 8/8 — Summarising and writing clusters")
-
-  // Fix status for articles already present in existing clusters (stuck from a crashed prior run)
-  await Promise.all(
-    alreadyClustered
-      .filter((a) => newArticleIds.has(a.id))
-      .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
-  )
-
-  // Update existing clusters that gained new articles
-  await Promise.all(
-    updatedClusters.map(async (updated) => {
-      const allArticles = updated.articles.map(toClusterArticle)
-      await updateCluster(updated.id, allArticles, updated.centroid)
       await Promise.all(
-        updated.articles
-          .filter((a) => newArticleIds.has(a.id))
-          .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
+        docs.map(async (doc) => {
+          if (!doc.exists) return
+          const data = doc.data()!
+          const score = await scoreRelevance(data.title, data.excerpt)
+          if (score === null) {
+            log(`  Score failed for "${data.title}" — left as raw, will retry next ingestion`)
+          } else if (score < 5) {
+            await doc.ref.update({ status: "discarded", relevanceScore: score })
+            stats.discarded++
+            log(`  Discarded (score ${score}/10): "${data.title}"`)
+          } else {
+            await doc.ref.update({ status: "scored", relevanceScore: score })
+            scoredIds.push(doc.id)
+            log(`  Relevant (score ${score}/10): "${data.title}"`)
+          }
+        })
       )
-      log(`  Updated existing cluster with ${updated.articles.length} total articles`)
-    })
-  )
-
-  // Write new clusters
-  await runWithConcurrencyLimit(newClusters, 5, async (cluster) => {
-    const clusterArticlesData = cluster.articles.map(toClusterArticle)
-
-    let summary = clusterArticlesData[0].excerpt
-    let topicTag: TopicTag = "other"
-    let sentiment: Sentiment = "neutral"
-    let entities: string[] = []
-
-    if (!cluster.isSingleton) {
-      log(
-        `  Summarising cluster: "${cluster.articles[0].title}" + ${cluster.articles.length - 1} more`
-      )
-      try {
-        const result = await summariseCluster(cluster.articles)
-        summary = result.summary
-        topicTag = result.topicTag
-        sentiment = result.sentiment
-        entities = result.entities
-      } catch (e) {
-        log(`  Summarising cluster failed, using default: ${(e as Error).message}`)
-      }
     }
+    log(`Scoring done: ${scoredIds.length} relevant, ${stats.discarded} discarded`)
 
-    const publishedAt = cluster.articles.find((a) => a.pubDate)?.pubDate ?? new Date()
+    // Step 6 — embeddings
+    log("Step 6/9 — Generating embeddings")
+    const articlesWithEmbedding: ArticleWithEmbedding[] = []
 
-    await db.collection("clusters").add({
-      summary,
-      topicTag,
-      sentiment,
-      entities,
-      isSingleton: cluster.isSingleton,
-      articles: clusterArticlesData,
-      centroid: cluster.centroid,
-      articleCount: cluster.articles.length,
-      publishedAt,
-      createdAt: FieldValue.serverTimestamp(),
-      expireAt: getTtlExpirationDate(),
+    await runWithConcurrencyLimit(scoredIds, 10, async (id) => {
+      const doc = await db.collection("articles").doc(id).get()
+      if (!doc.exists) return
+      const data = doc.data()!
+      try {
+        const embedding = await embed(`${data.title}\n\n${data.excerpt}`)
+        await doc.ref.update({ embedding })
+        articlesWithEmbedding.push({
+          id,
+          title: data.title,
+          url: data.url,
+          domain: data.domain,
+          sourceId: data.sourceId ?? "",
+          sourceName: data.sourceName ?? "",
+          excerpt: data.excerpt,
+          relevanceScore: data.relevanceScore,
+          embedding,
+          pubDate: data.pubDate?.toDate?.() ?? null,
+        })
+        log(`  Embedded: "${data.title}"`)
+      } catch (e) {
+        log(`  Embedding failed for "${data.title}": ${(e as Error).message}`)
+      }
+    })
+    log(`Embedded ${articlesWithEmbedding.length} articles`)
+
+    // Step 7 — cluster (cross-run: check new articles against recent existing clusters first)
+    log("Step 7/9 — Clustering")
+    const recentClusters = await getRecentClusterCentroids(3)
+    log(`Loaded ${recentClusters.length} recent cluster centroids`)
+
+    const existingForClustering: ExistingCluster[] = recentClusters.map((c) => ({
+      id: c.id,
+      centroid: c.centroid,
+      articles: c.articles.map((a) => ({
+        ...a,
+        embedding: [],
+      })),
+    }))
+
+    const newArticleIds = new Set(articlesWithEmbedding.map((a) => a.id))
+
+    const { newClusters, updatedClusters, alreadyClustered } = clusterWithExisting(
+      articlesWithEmbedding,
+      existingForClustering
+    )
+
+    stats.clustered = articlesWithEmbedding.length
+    stats.clusters_created = newClusters.length
+    const singletons = newClusters.filter((c) => c.isSingleton).length
+    log(
+      `${newClusters.length} new clusters (${singletons} singletons), ${updatedClusters.length} existing clusters updated`
+    )
+    if (alreadyClustered.length > 0)
+      log(`${alreadyClustered.length} article(s) already in existing clusters — fixing status`)
+
+    // Step 8 — summarise new clusters and update existing ones
+    log("Step 8/9 — Summarising and writing clusters")
+
+    // Fix status for articles already present in existing clusters (stuck from a crashed prior run)
+    await Promise.all(
+      alreadyClustered
+        .filter((a) => newArticleIds.has(a.id))
+        .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
+    )
+
+    // Update existing clusters that gained new articles
+    await Promise.all(
+      updatedClusters.map(async (updated) => {
+        const allArticles = updated.articles.map(toClusterArticle)
+        await updateCluster(updated.id, allArticles, updated.centroid)
+        await Promise.all(
+          updated.articles
+            .filter((a) => newArticleIds.has(a.id))
+            .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
+        )
+        log(`  Updated existing cluster with ${updated.articles.length} total articles`)
+      })
+    )
+
+    // Write new clusters
+    await runWithConcurrencyLimit(newClusters, 5, async (cluster) => {
+      const clusterArticlesData = cluster.articles.map(toClusterArticle)
+
+      let summary = clusterArticlesData[0].excerpt
+      let topicTag: TopicTag = "other"
+      let sentiment: Sentiment = "neutral"
+      let entities: string[] = []
+
+      if (!cluster.isSingleton) {
+        log(
+          `  Summarising cluster: "${cluster.articles[0].title}" + ${cluster.articles.length - 1} more`
+        )
+        try {
+          const result = await summariseCluster(cluster.articles)
+          summary = result.summary
+          topicTag = result.topicTag
+          sentiment = result.sentiment
+          entities = result.entities
+        } catch (e) {
+          log(`  Summarising cluster failed, using default: ${(e as Error).message}`)
+        }
+      }
+
+      const publishedAt = cluster.articles.find((a) => a.pubDate)?.pubDate ?? new Date()
+
+      await db.collection("clusters").add({
+        summary,
+        topicTag,
+        sentiment,
+        entities,
+        isSingleton: cluster.isSingleton,
+        articles: clusterArticlesData,
+        centroid: cluster.centroid,
+        articleCount: cluster.articles.length,
+        publishedAt,
+        createdAt: FieldValue.serverTimestamp(),
+        expireAt: getTtlExpirationDate(),
+      })
+
+      await Promise.all(
+        cluster.articles.map((a) =>
+          db.collection("articles").doc(a.id).update({ status: "clustered" })
+        )
+      )
     })
 
-    await Promise.all(
-      cluster.articles.map((a) =>
-        db.collection("articles").doc(a.id).update({ status: "clustered" })
-      )
+    log(
+      `Written ${newClusters.length} new cluster${newClusters.length === 1 ? "" : "s"}, updated ${updatedClusters.length} existing`
     )
-  })
-
-  log(
-    `Written ${newClusters.length} new cluster${newClusters.length === 1 ? "" : "s"}, updated ${updatedClusters.length} existing`
-  )
+  }
 
   log("Step 9/9 — Generating digest")
   try {
@@ -772,7 +771,9 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
   }
 }
 
-async function generateAndSaveDigest(log: (msg: string) => void): Promise<void> {
+export async function generateAndSaveDigest(
+  log: (msg: string) => void = console.log
+): Promise<void> {
   const now = new Date()
   const start = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
   const clusters = await getClustersByDateRange(start, now)
@@ -782,13 +783,38 @@ async function generateAndSaveDigest(log: (msg: string) => void): Promise<void> 
     return
   }
 
+  interface IndexedArticle {
+    index: number
+    title: string
+    url: string
+    domain: string
+    sourceName?: string
+  }
+
+  const indexedArticles: IndexedArticle[] = []
+  let articleCounter = 1
+
   const clusterLines = clusters
     .slice(0, 60)
     .map((c) => {
+      const articleLines = c.articles
+        .map((a) => {
+          const idx = articleCounter++
+          indexedArticles.push({
+            index: idx,
+            title: a.title || a.url,
+            url: a.url,
+            domain: a.domain,
+            sourceName: a.sourceName,
+          })
+          return `    - [Article ${idx}] "${a.title || a.url}" (Source: ${a.sourceName || a.domain})`
+        })
+        .join("\n")
+
       const entities = c.entities.length > 0 ? ` [${c.entities.slice(0, 4).join(", ")}]` : ""
-      return `- [${c.topicTag}]${entities} ${c.summary}`
+      return `Story: [${c.topicTag}]${entities} ${c.summary}\n  Articles:\n${articleLines}`
     })
-    .join("\n")
+    .join("\n\n")
 
   const prompt = `You are an AI news analyst. Based on the following AI news stories from the last 3 days, write a concise digest for a technically sophisticated audience.
 
@@ -799,16 +825,17 @@ Return a JSON object with exactly this shape:
 {
   "headline": "A single punchy sentence capturing the most important theme or shift in the last 3 days",
   "insights": [
-    "Insight 1 — a specific, non-obvious observation about a trend, pattern, or implication",
-    "Insight 2",
-    "Insight 3"
+    {
+      "text": "Insight 1 — a specific, non-obvious observation about a trend, pattern, or implication",
+      "articleIndices": [1, 2]
+    }
   ]
 }
 
 Rules:
 - 3 to 5 insights, each 1-2 sentences
 - Be analytical and specific, not generic ("AI is advancing quickly" is not an insight)
-- Ground each insight in specific companies, models, or events from the news
+- Ground each insight by setting "articleIndices" to the exact [Article N] numbers (e.g. [1, 3]) for the articles supporting that insight
 - Highlight tensions, surprises, patterns, or implications a busy reader might miss`
 
   const response = await getAi().models.generateContent({
@@ -819,9 +846,45 @@ Rules:
 
   const parsed = JSON.parse(response.text ?? "{}")
   const headline = typeof parsed.headline === "string" ? parsed.headline : ""
-  const insights = Array.isArray(parsed.insights)
-    ? parsed.insights.filter((i: unknown): i is string => typeof i === "string")
-    : []
+
+  const articleMap = new Map<number, IndexedArticle>()
+  for (const item of indexedArticles) {
+    articleMap.set(item.index, item)
+  }
+
+  const insights: GroundedInsight[] = []
+  if (Array.isArray(parsed.insights)) {
+    for (const item of parsed.insights) {
+      if (typeof item === "string") {
+        insights.push({ text: item, sources: [] })
+      } else if (item && typeof item === "object" && typeof item.text === "string") {
+        const rawIndices: number[] = Array.isArray(item.articleIndices)
+          ? item.articleIndices.filter((n: unknown): n is number => typeof n === "number")
+          : []
+
+        const sources: DigestSource[] = []
+        const seenUrls = new Set<string>()
+
+        for (const idx of rawIndices) {
+          const matched = articleMap.get(idx)
+          if (matched && !seenUrls.has(matched.url)) {
+            seenUrls.add(matched.url)
+            sources.push({
+              title: matched.title,
+              url: matched.url,
+              domain: matched.domain,
+              sourceName: matched.sourceName,
+            })
+          }
+        }
+
+        insights.push({
+          text: item.text,
+          sources,
+        })
+      }
+    }
+  }
 
   await saveDigest({ headline, insights, generatedAt: now })
   log(`  Digest saved: "${headline.slice(0, 60)}…"`)

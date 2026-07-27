@@ -29,12 +29,12 @@ describe("isIngestErrorLine", () => {
   })
 
   it("does not classify normal ingestion log lines as error lines", () => {
-    expect(isIngestErrorLine("Step 1/8 — Loading sources")).toBe(false)
+    expect(isIngestErrorLine("Step 1/9 — Loading sources")).toBe(false)
     expect(isIngestErrorLine("Found 12 enabled sources")).toBe(false)
     expect(isIngestErrorLine("Source: TechCrunch")).toBe(false)
     expect(isIngestErrorLine("  TechCrunch: 15 items (2 too old, 13 kept)")).toBe(false)
     expect(isIngestErrorLine("13 unique URLs (2 filtered as too old)")).toBe(false)
-    expect(isIngestErrorLine("Step 4/8 — Scraping articles")).toBe(false)
+    expect(isIngestErrorLine("Step 4/9 — Scraping articles")).toBe(false)
     expect(isIngestErrorLine('  Saved: "AI Breakthrough Released"')).toBe(false)
     expect(isIngestErrorLine("  Saved via CloakBrowser: https://example.com")).toBe(false)
     expect(isIngestErrorLine('  Relevant (score 8/10): "AI Breakthrough Released"')).toBe(false)

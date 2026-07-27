@@ -41,6 +41,8 @@ export default function AdminPage() {
 
   const [dedupState, setDedupState] = useState<DedupState>("idle")
   const [dedupMessage, setDedupMessage] = useState<string | null>(null)
+  const [digestState, setDigestState] = useState<"idle" | "running" | "done" | "error">("idle")
+  const [digestMessage, setDigestMessage] = useState<string | null>(null)
 
   const [sortField, setSortField] = useState<"name" | "url" | "type" | "enabled" | null>(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
@@ -251,6 +253,21 @@ export default function AdminPage() {
     } catch (e) {
       setDedupMessage((e as Error).message)
       setDedupState("error")
+    }
+  }
+
+  async function handleGenerateDigest() {
+    setDigestState("running")
+    setDigestMessage(null)
+    try {
+      const r = await apiFetch("/api/admin/generate-digest", { method: "POST" })
+      const data = await r.json()
+      if (!r.ok || !data.success) throw new Error(data.error ?? "Digest generation failed")
+      setDigestMessage(data.message)
+      setDigestState("done")
+    } catch (e) {
+      setDigestMessage((e as Error).message)
+      setDigestState("error")
     }
   }
 
@@ -516,7 +533,7 @@ export default function AdminPage() {
             <div>
               <h2 className="font-sans text-lg text-foreground">Ingestion Pipeline</h2>
               <p className="font-sans text-xs text-muted-foreground">
-                Manually trigger the 8-step parsing, scraping, embedding, clustering, and
+                Manually trigger the 9-step parsing, scraping, embedding, clustering, and
                 summarizing engine.
               </p>
             </div>
@@ -552,6 +569,31 @@ export default function AdminPage() {
               className="shrink-0 border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {dedupState === "running" ? "Running…" : "Run dedup"}
+            </button>
+          </div>
+
+          {/* Digest panel */}
+          <div className="border border-border p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-sans text-sm text-foreground">Generate 3-day digest</p>
+              <p className="font-sans text-xs text-muted-foreground mt-0.5">
+                Synthesize recent clusters from the past 3 days into grounded summary claims.
+              </p>
+              {digestMessage && (
+                <p
+                  className={`font-mono text-xs mt-1 ${digestState === "error" ? "text-red-500" : "text-muted-foreground"}`}
+                >
+                  {digestMessage}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleGenerateDigest}
+              disabled={digestState === "running"}
+              className="shrink-0 border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {digestState === "running" ? "Running…" : "Run digest"}
             </button>
           </div>
 
