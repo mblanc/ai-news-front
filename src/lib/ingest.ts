@@ -161,7 +161,6 @@ async function resolveSourceUrls(
     return parseRssFeed(feedUrl)
   }
 
-
   // page source — try RSS autodiscovery first
   assertSafeUrl(source.url)
   log(`  Fetching page: ${source.url}`)

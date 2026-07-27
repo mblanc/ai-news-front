@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import type { Source, SourceType } from "@/lib/types"
 import type { IngestStats } from "@/lib/ingest"
+import { isIngestErrorLine } from "@/lib/ingest-log"
 
 function apiFetch(path: string, init?: RequestInit) {
   return fetch(path, {
@@ -68,7 +69,7 @@ export default function AdminPage() {
 
     if (typeof aValue === "boolean" && typeof bValue === "boolean") {
       if (aValue === bValue) return 0
-      return sortDirection === "asc" ? (aValue ? 1 : -1) : (aValue ? -1 : 1)
+      return sortDirection === "asc" ? (aValue ? 1 : -1) : aValue ? -1 : 1
     }
 
     const aStr = String(aValue).toLowerCase()
@@ -346,25 +347,19 @@ export default function AdminPage() {
                       onClick={() => handleSort("name")}
                       className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-foreground select-none group"
                     >
-                      <span className="flex items-center gap-1">
-                        Name {renderSortIcon("name")}
-                      </span>
+                      <span className="flex items-center gap-1">Name {renderSortIcon("name")}</span>
                     </th>
                     <th
                       onClick={() => handleSort("url")}
                       className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-foreground select-none group"
                     >
-                      <span className="flex items-center gap-1">
-                        URL {renderSortIcon("url")}
-                      </span>
+                      <span className="flex items-center gap-1">URL {renderSortIcon("url")}</span>
                     </th>
                     <th
                       onClick={() => handleSort("type")}
                       className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-28 cursor-pointer hover:text-foreground select-none group"
                     >
-                      <span className="flex items-center gap-1">
-                        Type {renderSortIcon("type")}
-                      </span>
+                      <span className="flex items-center gap-1">Type {renderSortIcon("type")}</span>
                     </th>
                     <th
                       onClick={() => handleSort("enabled")}
@@ -575,8 +570,8 @@ export default function AdminPage() {
                     className={
                       line.startsWith("Step ")
                         ? "text-white font-semibold mt-3 first:mt-0 text-xs border-b border-zinc-800 pb-1"
-                        : line.startsWith("Error") || line.startsWith("Fatal")
-                          ? "text-red-400"
+                        : isIngestErrorLine(line)
+                          ? "bg-red-950/90 text-red-200 px-2 py-0.5 rounded border-l-2 border-red-500 font-medium"
                           : line.startsWith("  Saved:")
                             ? "text-green-300"
                             : line.startsWith("  Discarded")

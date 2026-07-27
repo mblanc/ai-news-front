@@ -27,7 +27,6 @@ async function fetchFeedXml(feedUrl: string): Promise<string> {
   const res = await fetch(feedUrl, { headers })
   if (res.ok) return res.text()
 
-
   // Firecrawl fallback for bot-protected feeds
   if (process.env.FIRECRAWL_API_KEY && (res.status === 403 || res.status === 429)) {
     const fc = await fetch("https://api.firecrawl.dev/v1/scrape", {

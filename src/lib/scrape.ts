@@ -57,7 +57,6 @@ export function isRedditUrl(url: string): boolean {
   return hostname === "reddit.com" || hostname === "www.reddit.com" || hostname === "old.reddit.com"
 }
 
-
 let redditTokenCache: { token: string; expiresAt: number } | null = null
 
 async function getRedditAccessToken(): Promise<string | null> {
