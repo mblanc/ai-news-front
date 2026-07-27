@@ -101,9 +101,7 @@ async function fetchRedditPost(url: string): Promise<ScrapedArticle> {
   const token = await getRedditAccessToken()
   // Use oauth.reddit.com with a Bearer token when credentials are available,
   // fall back to the unauthenticated www endpoint otherwise
-  const apiUrl = token
-    ? `https://oauth.reddit.com${pathname}`
-    : `https://www.reddit.com${pathname}`
+  const apiUrl = token ? `https://oauth.reddit.com${pathname}` : `https://www.reddit.com${pathname}`
 
   const headers: Record<string, string> = { "User-Agent": REDDIT_USER_AGENT }
   if (token) headers["Authorization"] = `Bearer ${token}`

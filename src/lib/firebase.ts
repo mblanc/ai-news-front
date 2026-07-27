@@ -113,7 +113,9 @@ export async function getRecentClusterCentroids(days = 3): Promise<StoredCluster
   }
 }
 
-export async function saveDigest(digest: Omit<Digest, "generatedAt"> & { generatedAt: Date }): Promise<void> {
+export async function saveDigest(
+  digest: Omit<Digest, "generatedAt"> & { generatedAt: Date }
+): Promise<void> {
   await db.collection("digest").doc("latest").set({
     headline: digest.headline,
     insights: digest.insights,

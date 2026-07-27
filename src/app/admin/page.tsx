@@ -41,6 +41,59 @@ export default function AdminPage() {
   const [dedupState, setDedupState] = useState<DedupState>("idle")
   const [dedupMessage, setDedupMessage] = useState<string | null>(null)
 
+  const [sortField, setSortField] = useState<"name" | "url" | "type" | "enabled" | null>(null)
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
+
+  const handleSort = (field: "name" | "url" | "type" | "enabled") => {
+    if (sortField === field) {
+      if (sortDirection === "asc") {
+        setSortDirection("desc")
+      } else {
+        setSortField(null)
+      }
+    } else {
+      setSortField(field)
+      setSortDirection("asc")
+    }
+  }
+
+  const sortedSources = [...sources].sort((a, b) => {
+    if (!sortField) return 0
+
+    let aValue = a[sortField]
+    let bValue = b[sortField]
+
+    if (aValue === undefined || aValue === null) aValue = ""
+    if (bValue === undefined || bValue === null) bValue = ""
+
+    if (typeof aValue === "boolean" && typeof bValue === "boolean") {
+      if (aValue === bValue) return 0
+      return sortDirection === "asc" ? (aValue ? 1 : -1) : (aValue ? -1 : 1)
+    }
+
+    const aStr = String(aValue).toLowerCase()
+    const bStr = String(bValue).toLowerCase()
+
+    if (aStr < bStr) return sortDirection === "asc" ? -1 : 1
+    if (aStr > bStr) return sortDirection === "asc" ? 1 : -1
+    return 0
+  })
+
+  const renderSortIcon = (field: "name" | "url" | "type" | "enabled") => {
+    if (sortField !== field) {
+      return (
+        <span className="ml-1 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors font-sans text-[8px] tracking-normal select-none">
+          ▲▼
+        </span>
+      )
+    }
+    return (
+      <span className="ml-1 text-foreground font-sans text-[8px] tracking-normal select-none">
+        {sortDirection === "asc" ? "▲" : "▼"}
+      </span>
+    )
+  }
+
   useEffect(() => {
     apiFetch("/api/sources")
       .then((r) => r.json())
@@ -66,7 +119,10 @@ export default function AdminPage() {
         method: "POST",
         body: JSON.stringify({ url, name }),
       })
-      if (!r.ok) throw new Error("Failed to add source")
+      if (!r.ok) {
+        const errorData = await r.json().catch(() => null)
+        throw new Error(errorData?.error ?? "Failed to add source")
+      }
       const source = await r.json()
       setSources((prev) => [source, ...prev])
       setShowAdd(false)
@@ -105,11 +161,19 @@ export default function AdminPage() {
     if (!editDraft) return
     setSaving(true)
     try {
+      const trimmedDraft = {
+        name: editDraft.name.trim(),
+        url: editDraft.url.trim(),
+        type: editDraft.type,
+      }
       const r = await apiFetch(`/api/sources/${id}`, {
         method: "PATCH",
-        body: JSON.stringify(editDraft),
+        body: JSON.stringify(trimmedDraft),
       })
-      if (!r.ok) throw new Error("Failed to save")
+      if (!r.ok) {
+        const errorData = await r.json().catch(() => null)
+        throw new Error(errorData?.error ?? "Failed to save")
+      }
       const updated = await r.json()
       setSources((prev) => prev.map((s) => (s.id === id ? updated : s)))
       setEditingId(null)
@@ -278,23 +342,43 @@ export default function AdminPage() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b border-border bg-muted/10">
-                    <th className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                      Name
+                    <th
+                      onClick={() => handleSort("name")}
+                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-foreground select-none group"
+                    >
+                      <span className="flex items-center gap-1">
+                        Name {renderSortIcon("name")}
+                      </span>
                     </th>
-                    <th className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                      URL
+                    <th
+                      onClick={() => handleSort("url")}
+                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-foreground select-none group"
+                    >
+                      <span className="flex items-center gap-1">
+                        URL {renderSortIcon("url")}
+                      </span>
                     </th>
-                    <th className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-24">
-                      Type
+                    <th
+                      onClick={() => handleSort("type")}
+                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-28 cursor-pointer hover:text-foreground select-none group"
+                    >
+                      <span className="flex items-center gap-1">
+                        Type {renderSortIcon("type")}
+                      </span>
                     </th>
-                    <th className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-16">
-                      On
+                    <th
+                      onClick={() => handleSort("enabled")}
+                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-20 cursor-pointer hover:text-foreground select-none group"
+                    >
+                      <span className="flex items-center gap-1">
+                        On {renderSortIcon("enabled")}
+                      </span>
                     </th>
                     <th className="py-2.5 px-4 w-32"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sources.map((source) =>
+                  {sortedSources.map((source) =>
                     editingId === source.id && editDraft ? (
                       <tr
                         key={source.id}

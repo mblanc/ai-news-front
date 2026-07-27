@@ -417,7 +417,11 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
           stats.new_articles++
           log(`  Saved: "${scraped.title || url}"`)
         } catch (e) {
-          if (e instanceof HttpError && (e.status === 403 || e.status === 429) && !domain.includes("reddit.com")) {
+          if (
+            e instanceof HttpError &&
+            (e.status === 403 || e.status === 429) &&
+            !domain.includes("reddit.com")
+          ) {
             log(`  HTTP ${e.status} [${domain}] — trying CloakBrowser fallback`)
             let fallbackMd = await cloakbrowserFetch(url)
             let fallbackSource = "CloakBrowser"

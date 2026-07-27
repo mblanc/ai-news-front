@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { db, docToSource } from "@/lib/firebase"
+import { assertSafeUrl } from "@/lib/scrape"
 
 const patchSchema = z.object({
   enabled: z.boolean().optional(),
-  name: z.string().optional(),
-  url: z.string().url().optional(),
+  name: z
+    .string()
+    .transform((val) => val.trim())
+    .optional(),
+  url: z
+    .string()
+    .transform((val) => val.trim())
+    .pipe(z.string().url())
+    .optional(),
   type: z.enum(["rss", "page"]).optional(),
 })
 
@@ -14,10 +22,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const body = await request.json().catch(() => null)
   const result = patchSchema.safeParse(body)
   if (!result.success) {
+    console.error("PATCH /api/sources/[id] validation failed:", result.error.format())
     return NextResponse.json(
       { error: "Invalid input", details: result.error.format() },
       { status: 400 }
     )
+  }
+
+  if (result.data.url) {
+    try {
+      assertSafeUrl(result.data.url)
+    } catch (err) {
+      return NextResponse.json(
+        { error: (err as Error).message || "Disallowed URL" },
+        { status: 422 }
+      )
+    }
   }
 
   const ref = db.collection("sources").doc(id)
