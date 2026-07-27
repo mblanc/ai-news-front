@@ -67,6 +67,8 @@ export interface Cluster {
   publishedAt: Date
   expireAt?: Date
   importanceScore?: number
+  keyTakeaways?: string[]
+  whyItMatters?: string
 }
 
 export type DigestScope = "daily" | "weekly" | "monthly" | "overview"

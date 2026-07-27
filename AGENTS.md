@@ -50,7 +50,7 @@ The 9-step ingestion pipeline lives in `lib/ingest.ts`. It runs hourly via a nod
 ### AI/ML Components
 
 - **Embedding model:** `EMBEDDING_MODEL` env var (default: `gemini-embedding-2`, 768-dim vectors)
-- **LLM:** `INGEST_MODEL` env var (default: `gemini-3.1-flash-lite`) via `@google/genai`
+- **LLM:** `INGEST_MODEL` env var (default: `gemini-3.5-flash-lite`) via `@google/genai`
 - **Clustering threshold:** 0.82 cosine similarity
 - **Relevance threshold:** Score ≥ 5 out of 10 to keep an article
 - **Cluster matching window:** Articles matched against clusters from last 3 days

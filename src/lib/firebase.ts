@@ -57,6 +57,8 @@ function mapDocToCluster(doc: QueryDocumentSnapshot): Cluster {
     publishedAt,
     expireAt: d.expireAt?.toDate?.() ?? undefined,
     importanceScore: d.importanceScore ?? undefined,
+    keyTakeaways: d.keyTakeaways ?? [],
+    whyItMatters: d.whyItMatters ?? "",
   } satisfies Cluster
 }
 
@@ -73,6 +75,17 @@ export async function getClustersByDateRange(startDate: Date, endDate: Date): Pr
   } catch (error) {
     console.error("Error fetching clusters by date range:", error)
     return []
+  }
+}
+
+export async function getClusterById(id: string): Promise<Cluster | null> {
+  try {
+    const doc = await db.collection("clusters").doc(id).get()
+    if (!doc.exists) return null
+    return mapDocToCluster(doc as QueryDocumentSnapshot)
+  } catch (error) {
+    console.error("Error fetching cluster by id:", error)
+    return null
   }
 }
 

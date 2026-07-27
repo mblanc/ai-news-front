@@ -32,7 +32,7 @@ import type {
   DigestScope,
 } from "@/lib/types"
 
-const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.1-flash-lite"
+const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.5-flash-lite"
 const THREE_DAYS_MS = 72 * 60 * 60 * 1000
 const MAX_BODY_CHARS = 50_000
 const DOMAIN_DELAY_MS = 500
@@ -657,6 +657,7 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
           sourceId: data.sourceId ?? "",
           sourceName: data.sourceName ?? "",
           excerpt: data.excerpt,
+          bodyMd: data.bodyMd,
           relevanceScore: data.relevanceScore,
           embedding,
           pubDate: data.pubDate?.toDate?.() ?? null,
@@ -732,20 +733,25 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
       let entities: string[] = []
       let importanceScore = 5
 
-      if (!cluster.isSingleton) {
-        log(
-          `  Summarising cluster: "${cluster.articles[0].title}" + ${cluster.articles.length - 1} more`
-        )
-        try {
-          const result = await summariseCluster(cluster.articles)
-          summary = result.summary
-          topicTag = result.topicTag
-          sentiment = result.sentiment
-          entities = result.entities
-          importanceScore = result.importanceScore
-        } catch (e) {
-          log(`  Summarising cluster failed, using default: ${(e as Error).message}`)
-        }
+      let keyTakeaways: string[] = []
+      let whyItMatters = ""
+
+      log(
+        `  Summarising cluster: "${cluster.articles[0].title}"${
+          cluster.isSingleton ? " (singleton)" : ` + ${cluster.articles.length - 1} more`
+        }`
+      )
+      try {
+        const result = await summariseCluster(cluster.articles)
+        summary = result.summary
+        topicTag = result.topicTag
+        sentiment = result.sentiment
+        entities = result.entities
+        importanceScore = result.importanceScore
+        keyTakeaways = result.keyTakeaways
+        whyItMatters = result.whyItMatters
+      } catch (e) {
+        log(`  Summarising cluster failed, using default: ${(e as Error).message}`)
       }
 
       const publishedAt = cluster.articles.find((a) => a.pubDate)?.pubDate ?? new Date()
@@ -756,6 +762,8 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
         sentiment,
         entities,
         importanceScore,
+        keyTakeaways,
+        whyItMatters,
         isSingleton: cluster.isSingleton,
         articles: clusterArticlesData,
         centroid: cluster.centroid,
@@ -823,7 +831,8 @@ export function computeClusterImpactScore(c: Cluster): number {
   const importance = c.importanceScore ?? 5
   const avgRelevance =
     c.articles.length > 0
-      ? c.articles.reduce((acc: number, a: ClusterArticle) => acc + (a.relevanceScore ?? 5), 0) / c.articles.length
+      ? c.articles.reduce((acc: number, a: ClusterArticle) => acc + (a.relevanceScore ?? 5), 0) /
+        c.articles.length
       : 5
   const volumeScore = Math.log2((c.articleCount || c.articles.length || 1) + 1)
   return importance * 0.6 + avgRelevance * 0.3 + volumeScore * 0.1
@@ -1055,7 +1064,9 @@ Return JSON:
   } else {
     const weekly = await getLatestDigest("weekly")
     const weeklyContext = weekly
-      ? weekly.insights.map((i: string | GroundedInsight) => (typeof i === "string" ? i : i.text)).join("\n")
+      ? weekly.insights
+          .map((i: string | GroundedInsight) => (typeof i === "string" ? i : i.text))
+          .join("\n")
       : ""
 
     const prompt = `You are a chief AI analyst updating the ongoing "State of AI Field Overview".
@@ -1107,9 +1118,7 @@ Return JSON:
   }
 }
 
-export async function seedAllDigests(
-  log: (msg: string) => void = console.log
-): Promise<void> {
+export async function seedAllDigests(log: (msg: string) => void = console.log): Promise<void> {
   log("Starting Cold Start Digest Seeding for all 4 scopes...")
   log("[1/4] Generating Daily Digest...")
   await generateAndSaveDigest(log)
@@ -1144,6 +1153,8 @@ Excerpt: ${excerpt}`
 
 interface SummaryResult {
   summary: string
+  keyTakeaways: string[]
+  whyItMatters: string
   topicTag: TopicTag
   sentiment: Sentiment
   entities: string[]
@@ -1151,18 +1162,24 @@ interface SummaryResult {
 }
 
 async function summariseCluster(articles: ArticleWithEmbedding[]): Promise<SummaryResult> {
-  const articleList = articles.map((a, i) => `${i + 1}. ${a.title}\n${a.excerpt}`).join("\n\n")
+  const articleList = articles
+    .map((a, i) => `${i + 1}. ${a.title}\n${a.bodyMd ? a.bodyMd.slice(0, 15000) : a.excerpt}`)
+    .join("\n\n")
 
-  const prompt = `You are a news curator. Given these ${articles.length} articles on a related AI topic, write:
-1. A 2–3 sentence summary that explains what happened and why it matters. Surface expert perspectives, not just event facts.
-2. The most relevant topic tag (one of: model-release, research, funding, product, policy, industry, agents, hardware, opinion, education, other).
-3. Overall sentiment (positive / neutral / negative).
-4. Up to 5 named entities (companies, people, models).
-5. An industry importance score from 1 to 10 (10 = landmark open-weights release, major architectural breakthrough, or historical regulation; 1 = minor app patch or opinion post).
+  const prompt = `You are an expert AI news analyst. Given these ${articles.length} articles on a related AI topic, write:
+1. A 2–3 sentence executive summary explaining what happened and why it matters.
+2. 3–4 concise key takeaway bullet points highlighting essential technical or industry facts.
+3. A 1–2 sentence "whyItMatters" explanation of the long-term impact or industry significance.
+4. The most relevant topic tag (one of: model-release, research, funding, product, policy, industry, agents, hardware, opinion, education, other).
+5. Overall sentiment (positive / neutral / negative).
+6. Up to 5 named entities (companies, people, models).
+7. An industry importance score from 1 to 10 (10 = landmark open-weights release, major architectural breakthrough, or historical regulation; 1 = minor app patch or opinion post).
 
 Output JSON:
 {
   "summary": "...",
+  "keyTakeaways": ["...", "..."],
+  "whyItMatters": "...",
   "topicTag": "...",
   "sentiment": "...",
   "entities": ["..."],
@@ -1179,9 +1196,14 @@ ${articleList}`
       config: { responseMimeType: "application/json" },
     })
     const parsed = JSON.parse(response.text ?? "{}")
-    const importanceScore = typeof parsed.importanceScore === "number" ? Math.min(10, Math.max(1, parsed.importanceScore)) : 5
+    const importanceScore =
+      typeof parsed.importanceScore === "number"
+        ? Math.min(10, Math.max(1, parsed.importanceScore))
+        : 5
     return {
       summary: parsed.summary ?? articles[0].excerpt,
+      keyTakeaways: Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways : [],
+      whyItMatters: typeof parsed.whyItMatters === "string" ? parsed.whyItMatters : "",
       topicTag: (parsed.topicTag as TopicTag) ?? "other",
       sentiment: (parsed.sentiment as Sentiment) ?? "neutral",
       entities: Array.isArray(parsed.entities) ? parsed.entities : [],
@@ -1190,6 +1212,8 @@ ${articleList}`
   } catch {
     return {
       summary: articles[0].excerpt,
+      keyTakeaways: [],
+      whyItMatters: "",
       topicTag: "other",
       sentiment: "neutral",
       entities: [],

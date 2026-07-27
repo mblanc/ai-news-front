@@ -317,13 +317,13 @@ New env vars:
 ```
 FIRECRAWL_API_KEY=          # optional; Firecrawl fallback scraping
 ADMIN_EMAILS=               # comma-separated list of admin email addresses
-INGEST_MODEL=               # optional; defaults to gemini-3.1-flash-lite
+INGEST_MODEL=               # optional; defaults to gemini-3.5-flash-lite
 ```
 
 `INGEST_MODEL` is read once at the top of `lib/ingest.ts` and passed to every Gemini call in the pipeline (URL extraction, relevance scoring, summarisation). To switch models, change the env var — no code changes needed:
 
 ```typescript
-const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.1-flash-lite"
+const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.5-flash-lite"
 ```
 
 ---

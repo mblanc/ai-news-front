@@ -27,6 +27,7 @@ export interface ArticleWithEmbedding {
   sourceId: string
   sourceName: string
   excerpt: string
+  bodyMd?: string
   relevanceScore: number
   embedding: number[]
   pubDate?: Date | null

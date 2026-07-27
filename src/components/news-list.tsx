@@ -1,9 +1,10 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ExternalLink, ChevronDown, ChevronUp } from "lucide-react"
+import { ExternalLink, FileText } from "lucide-react"
 import { DomainIcon } from "@/components/domain-icon"
 import { formatDate, formatDateLong } from "@/lib/format-date"
+import { SummaryModal } from "@/components/summary-modal"
 import type { Cluster } from "@/lib/types"
 import type { FilterOptions } from "@/components/filter-panel"
 
@@ -27,8 +28,13 @@ const TAG_LABELS: Record<string, string> = {
   other: "Other",
 }
 
-function ClusterCard({ cluster }: { cluster: Cluster }) {
-  const [summaryOpen, setSummaryOpen] = useState(false)
+function ClusterCard({
+  cluster,
+  onOpenSummary,
+}: {
+  cluster: Cluster
+  onOpenSummary: (cluster: Cluster) => void
+}) {
   const uniqueArticles = useMemo(() => {
     const seen = new Set<string>()
     return cluster.articles.filter((a) => {
@@ -41,6 +47,7 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
 
   const lead = uniqueArticles[0]
   const leadTitle = lead?.title ?? "Untitled"
+  const summaryText = cluster.summary || lead?.excerpt
 
   return (
     <div className="border-b border-border py-4 last:border-b-0">
@@ -52,83 +59,81 @@ function ClusterCard({ cluster }: { cluster: Cluster }) {
         <span className="font-mono text-[10px] text-muted-foreground">
           {formatDate(cluster.publishedAt)}
         </span>
+        {cluster.sentiment && (
+          <span className="font-mono text-[10px] text-muted-foreground uppercase">
+            • {cluster.sentiment}
+          </span>
+        )}
       </div>
 
       {/* title row */}
-      {cluster.isSingleton ? (
-        <a
-          href={lead?.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 group"
+      <div className="flex items-start justify-between gap-3 group">
+        <div
+          className="flex items-start gap-2 flex-1 cursor-pointer min-w-0"
+          onClick={() => onOpenSummary(cluster)}
         >
-          <DomainIcon domain={lead?.domain ?? ""} />
-          <span className="font-newsreader text-lg leading-snug text-foreground group-hover:text-muted-foreground transition-colors flex-1">
-            {leadTitle}
-          </span>
-          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
-        </a>
-      ) : (
-        <div className="flex items-center gap-2">
-          <div className="flex -space-x-1 shrink-0">
-            {uniqueArticles.slice(0, 4).map((a) => (
-              <DomainIcon key={a.id} domain={a.domain} />
-            ))}
-          </div>
-          <span className="font-newsreader text-lg leading-snug text-foreground">{leadTitle}</span>
-        </div>
-      )}
-
-      {/* summary toggle */}
-      {cluster.summary && (
-        <div className="mt-2">
-          <button
-            onClick={() => setSummaryOpen((o) => !o)}
-            className="flex items-center gap-1 font-sans text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {summaryOpen ? (
-              <>
-                <ChevronUp className="h-3 w-3" /> Hide
-              </>
-            ) : (
-              <>
-                <ChevronDown className="h-3 w-3" /> Show summary
-              </>
-            )}
-          </button>
-
-          {summaryOpen && (
-            <div className="mt-2 space-y-2">
-              <p className="font-newsreader text-base leading-snug text-muted-foreground">
-                {cluster.summary}
-              </p>
-              {!cluster.isSingleton && (
-                <div className="space-y-1.5 pt-1">
-                  {uniqueArticles.map((article) => (
-                    <div key={article.id} className="flex items-center gap-2">
-                      <DomainIcon domain={article.domain} />
-                      <a
-                        href={article.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-sans text-sm text-foreground hover:text-muted-foreground transition-colors flex items-center gap-1 group"
-                      >
-                        {article.title}
-                        <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              )}
+          {!cluster.isSingleton ? (
+            <div className="flex -space-x-1 shrink-0 mt-1">
+              {uniqueArticles.slice(0, 4).map((a) => (
+                <DomainIcon key={a.id} domain={a.domain} />
+              ))}
+            </div>
+          ) : (
+            <div className="shrink-0 mt-1">
+              <DomainIcon domain={lead?.domain ?? ""} />
             </div>
           )}
+          <div className="flex-1 min-w-0">
+            <h4 className="font-newsreader text-lg sm:text-xl leading-snug text-foreground group-hover:text-muted-foreground transition-colors">
+              {leadTitle}
+            </h4>
+
+            {/* Always display inline summary below the title */}
+            {summaryText && (
+              <p className="font-newsreader text-base text-muted-foreground leading-snug mt-1.5 line-clamp-3">
+                {summaryText}
+              </p>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* Direct external link button */}
+        {lead?.url && (
+          <a
+            href={lead.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Read full original article on external site"
+            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
+          >
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        )}
+      </div>
+
+      {/* Action buttons row */}
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => onOpenSummary(cluster)}
+          className="flex items-center gap-1.5 font-sans text-xs font-medium text-foreground bg-secondary/80 hover:bg-secondary border border-border px-2.5 py-1 transition-colors"
+        >
+          <FileText className="h-3.5 w-3.5 text-primary" />
+          Summary
+        </button>
+
+        {!cluster.isSingleton && (
+          <span className="font-mono text-xs text-muted-foreground">
+            {uniqueArticles.length} sources
+          </span>
+        )}
+      </div>
     </div>
   )
 }
 
 export function NewsList({ clusters, filters, searchQuery }: NewsListProps) {
+  const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null)
   const [sortBy] = (filters.sort || "date-desc").split("-") as ["date" | "domain", "asc" | "desc"]
 
   const grouped = useMemo(() => {
@@ -194,11 +199,21 @@ export function NewsList({ clusters, filters, searchQuery }: NewsListProps) {
 
           <div>
             {grouped[sectionKey].map((cluster) => (
-              <ClusterCard key={cluster.id} cluster={cluster} />
+              <ClusterCard
+                key={cluster.id}
+                cluster={cluster}
+                onOpenSummary={(c) => setSelectedCluster(c)}
+              />
             ))}
           </div>
         </div>
       ))}
+
+      <SummaryModal
+        cluster={selectedCluster}
+        open={!!selectedCluster}
+        onOpenChange={(open) => !open && setSelectedCluster(null)}
+      />
     </div>
   )
 }

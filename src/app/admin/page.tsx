@@ -596,9 +596,12 @@ export default function AdminPage() {
           {/* Digest panel */}
           <div className="border border-border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <p className="font-sans text-sm text-foreground font-semibold">Generate Multi-Scope Digests</p>
+              <p className="font-sans text-sm text-foreground font-semibold">
+                Generate Multi-Scope Digests
+              </p>
               <p className="font-sans text-xs text-muted-foreground mt-0.5">
-                Synthesize grounded summaries for Daily, Weekly, Monthly, or All-Time Field Overview.
+                Synthesize grounded summaries for Daily, Weekly, Monthly, or All-Time Field
+                Overview.
               </p>
               {digestMessage && (
                 <p

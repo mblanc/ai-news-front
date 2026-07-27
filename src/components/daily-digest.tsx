@@ -32,7 +32,6 @@ export function DailyDigest() {
 
   useEffect(() => {
     let isCancelled = false
-    setStatus("loading")
     fetch(`/api/digest?scope=${activeScope}`)
       .then((r) => {
         if (r.status === 404) return null
@@ -81,7 +80,10 @@ export function DailyDigest() {
           {SCOPES.map((scope) => (
             <button
               key={scope.id}
-              onClick={() => setActiveScope(scope.id)}
+              onClick={() => {
+                setStatus("loading")
+                setActiveScope(scope.id)
+              }}
               className={`font-mono text-[10px] px-2.5 py-1 rounded transition-colors ${
                 activeScope === scope.id
                   ? "bg-background text-foreground font-semibold shadow-xs"
