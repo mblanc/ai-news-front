@@ -1,5 +1,5 @@
 FROM node:23-alpine AS base
-ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+RUN npm install -g npm@latest
     
 # Install dependencies only when needed
 FROM base AS deps
