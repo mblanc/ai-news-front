@@ -1,5 +1,5 @@
 FROM node:23-alpine AS base
-RUN npm install -g npm@latest
+RUN npm install -g npm@12.0.1
     
 # Install dependencies only when needed
 FROM base AS deps
