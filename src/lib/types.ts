@@ -66,7 +66,10 @@ export interface Cluster {
   createdAt: Date
   publishedAt: Date
   expireAt?: Date
+  importanceScore?: number
 }
+
+export type DigestScope = "daily" | "weekly" | "monthly" | "overview"
 
 export interface DigestSource {
   title: string
@@ -84,4 +87,5 @@ export interface Digest {
   headline: string
   insights: (string | GroundedInsight)[]
   generatedAt: Date
+  scope?: DigestScope
 }

@@ -15,11 +15,22 @@ import {
 import {
   getRecentClusterCentroids,
   getClustersByDateRange,
+  getClusters,
+  getLatestDigest,
   updateCluster,
   saveDigest,
   getTtlExpirationDate,
 } from "@/lib/firebase"
-import type { Source, TopicTag, Sentiment, GroundedInsight, DigestSource } from "@/lib/types"
+import type {
+  Source,
+  TopicTag,
+  Sentiment,
+  GroundedInsight,
+  DigestSource,
+  Cluster,
+  ClusterArticle,
+  DigestScope,
+} from "@/lib/types"
 
 const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.1-flash-lite"
 const THREE_DAYS_MS = 72 * 60 * 60 * 1000
@@ -719,6 +730,7 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
       let topicTag: TopicTag = "other"
       let sentiment: Sentiment = "neutral"
       let entities: string[] = []
+      let importanceScore = 5
 
       if (!cluster.isSingleton) {
         log(
@@ -730,6 +742,7 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
           topicTag = result.topicTag
           sentiment = result.sentiment
           entities = result.entities
+          importanceScore = result.importanceScore
         } catch (e) {
           log(`  Summarising cluster failed, using default: ${(e as Error).message}`)
         }
@@ -742,6 +755,7 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
         topicTag,
         sentiment,
         entities,
+        importanceScore,
         isSingleton: cluster.isSingleton,
         articles: clusterArticlesData,
         centroid: cluster.centroid,
@@ -763,25 +777,69 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
     )
   }
 
-  log("Step 9/9 — Generating digest")
+  log("Step 9/9 — Generating digests")
   try {
     await generateAndSaveDigest(log)
+    await checkAndRefreshMultiScopeDigests(log)
   } catch (e) {
     log(`Digest generation failed (non-fatal): ${(e as Error).message}`)
   }
 }
 
-export async function generateAndSaveDigest(
+export async function checkAndRefreshMultiScopeDigests(
   log: (msg: string) => void = console.log
 ): Promise<void> {
   const now = new Date()
-  const start = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
-  const clusters = await getClustersByDateRange(start, now)
 
-  if (clusters.length === 0) {
-    log("  No clusters for digest — skipping")
-    return
+  // 1. Check Weekly Digest staleness (due if missing or >= 7 days old)
+  try {
+    const weekly = await getLatestDigest("weekly")
+    const isWeeklyDue =
+      !weekly || now.getTime() - weekly.generatedAt.getTime() >= 7 * 24 * 60 * 60 * 1000
+    if (isWeeklyDue) {
+      log("  Weekly digest is due — generating weekly digest & updating field overview")
+      await generateWeeklyDigest(log)
+      await generateAllTimeOverview(log)
+    }
+  } catch (err) {
+    log(`  Weekly digest check/generation error: ${(err as Error).message}`)
   }
+
+  // 2. Check Monthly Digest staleness (due if missing or >= 30 days old)
+  try {
+    const monthly = await getLatestDigest("monthly")
+    const isMonthlyDue =
+      !monthly || now.getTime() - monthly.generatedAt.getTime() >= 30 * 24 * 60 * 60 * 1000
+    if (isMonthlyDue) {
+      log("  Monthly digest is due — generating monthly digest")
+      await generateMonthlyDigest(log)
+    }
+  } catch (err) {
+    log(`  Monthly digest check/generation error: ${(err as Error).message}`)
+  }
+}
+
+export function computeClusterImpactScore(c: Cluster): number {
+  const importance = c.importanceScore ?? 5
+  const avgRelevance =
+    c.articles.length > 0
+      ? c.articles.reduce((acc: number, a: ClusterArticle) => acc + (a.relevanceScore ?? 5), 0) / c.articles.length
+      : 5
+  const volumeScore = Math.log2((c.articleCount || c.articles.length || 1) + 1)
+  return importance * 0.6 + avgRelevance * 0.3 + volumeScore * 0.1
+}
+
+export function rankClustersByImportance(clusters: Cluster[]): Cluster[] {
+  return [...clusters].sort((a, b) => computeClusterImpactScore(b) - computeClusterImpactScore(a))
+}
+
+async function generateDigestFromClusters(
+  clusters: Cluster[],
+  scope: DigestScope = "daily",
+  timeframeLabel = "the last 3 days",
+  log: (msg: string) => void = console.log
+): Promise<void> {
+  const now = new Date()
 
   interface IndexedArticle {
     index: number
@@ -816,14 +874,14 @@ export async function generateAndSaveDigest(
     })
     .join("\n\n")
 
-  const prompt = `You are an AI news analyst. Based on the following AI news stories from the last 3 days, write a concise digest for a technically sophisticated audience.
+  const prompt = `You are an AI news analyst. Based on the following AI news stories from ${timeframeLabel}, write a concise digest for a technically sophisticated audience.
 
 NEWS STORIES:
 ${clusterLines}
 
 Return a JSON object with exactly this shape:
 {
-  "headline": "A single punchy sentence capturing the most important theme or shift in the last 3 days",
+  "headline": "A single punchy sentence capturing the most important theme or shift in ${timeframeLabel}",
   "insights": [
     {
       "text": "Insight 1 — a specific, non-obvious observation about a trend, pattern, or implication",
@@ -886,8 +944,182 @@ Rules:
     }
   }
 
-  await saveDigest({ headline, insights, generatedAt: now })
-  log(`  Digest saved: "${headline.slice(0, 60)}…"`)
+  await saveDigest({ headline, insights, generatedAt: now }, scope)
+  log(`  Digest (${scope}) saved: "${headline.slice(0, 60)}…"`)
+}
+
+export async function generateAndSaveDigest(
+  log: (msg: string) => void = console.log
+): Promise<void> {
+  const now = new Date()
+  const start = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
+  const clusters = await getClustersByDateRange(start, now)
+
+  if (clusters.length === 0) {
+    log("  No clusters for daily digest — skipping")
+    return
+  }
+
+  await generateDigestFromClusters(clusters, "daily", "the last 3 days", log)
+}
+
+export async function generateWeeklyDigest(
+  log: (msg: string) => void = console.log
+): Promise<void> {
+  const now = new Date()
+  const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+  const rawClusters = await getClustersByDateRange(start, now)
+
+  if (rawClusters.length === 0) {
+    log("  No clusters for weekly digest — skipping")
+    return
+  }
+
+  const sortedClusters = rankClustersByImportance(rawClusters).slice(0, 30)
+  await generateDigestFromClusters(sortedClusters, "weekly", "the last 7 days", log)
+}
+
+export async function generateMonthlyDigest(
+  log: (msg: string) => void = console.log,
+  isColdStart = false
+): Promise<void> {
+  const now = new Date()
+  const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const rawClusters = await getClustersByDateRange(start, now)
+
+  const clustersToUse = rawClusters.length > 0 ? rawClusters : await getClusters(200)
+  const sortedClusters = rankClustersByImportance(clustersToUse).slice(0, 40)
+
+  if (sortedClusters.length === 0) {
+    log("  No clusters for monthly digest — skipping")
+    return
+  }
+
+  await generateDigestFromClusters(sortedClusters, "monthly", "the past 30 days", log)
+}
+
+export async function generateAllTimeOverview(
+  log: (msg: string) => void = console.log,
+  isColdStart = false
+): Promise<void> {
+  const now = new Date()
+  const existingOverview = await getLatestDigest("overview")
+
+  if (isColdStart || !existingOverview) {
+    const allClusters = await getClusters(300)
+    if (allClusters.length === 0) {
+      log("  No clusters found for All-Time Overview — skipping")
+      return
+    }
+    const topClusters = rankClustersByImportance(allClusters).slice(0, 50)
+    const clusterSummaries = topClusters
+      .map((c, i) => `${i + 1}. [${c.topicTag}] ${c.summary} (Sources: ${c.articleCount})`)
+      .join("\n")
+
+    const prompt = `You are a chief AI analyst. Synthesize a comprehensive "State of AI Field Overview" representing major breakthroughs, architectural paradigm shifts, frontier model releases, regulatory milestones, and industry trends based on the top stories recorded since inception.
+
+STORIES SUMMARY:
+${clusterSummaries}
+
+Return JSON:
+{
+  "headline": "State of AI: Macro Overview of Recent Breakthroughs and Paradigm Shifts",
+  "insights": [
+    {
+      "text": "Major Trend / Paradigm 1 — deep analytical breakdown of shift and key implications",
+      "articleIndices": [1, 2]
+    }
+  ]
+}`
+
+    const response = await getAi().models.generateContent({
+      model: INGEST_MODEL,
+      contents: prompt,
+      config: { responseMimeType: "application/json" },
+    })
+
+    const parsed = JSON.parse(response.text ?? "{}")
+    const headline =
+      typeof parsed.headline === "string" && parsed.headline.trim().length > 0
+        ? parsed.headline
+        : "State of AI: Field Overview"
+    const insights: GroundedInsight[] = Array.isArray(parsed.insights)
+      ? parsed.insights.map((item: { text?: string } | string) => ({
+          text: typeof item === "string" ? item : (item.text ?? ""),
+          sources: [],
+        }))
+      : []
+
+    await saveDigest({ headline, insights, generatedAt: now }, "overview")
+    log(`  All-Time Field Overview baseline seeded: "${headline.slice(0, 60)}…"`)
+  } else {
+    const weekly = await getLatestDigest("weekly")
+    const weeklyContext = weekly
+      ? weekly.insights.map((i: string | GroundedInsight) => (typeof i === "string" ? i : i.text)).join("\n")
+      : ""
+
+    const prompt = `You are a chief AI analyst updating the ongoing "State of AI Field Overview".
+
+CURRENT ALL-TIME FIELD OVERVIEW HEADLINE:
+${existingOverview.headline}
+
+CURRENT INSIGHTS:
+${existingOverview.insights.map((i: string | GroundedInsight) => (typeof i === "string" ? i : i.text)).join("\n")}
+
+THIS WEEK'S NEW DIGEST HIGHLIGHTS:
+${weeklyContext}
+
+Update and refine the Field Overview to incorporate new major developments, shifting trends, or emerging paradigms from this week while preserving overall historical context.
+
+Return JSON:
+{
+  "headline": "Updated State of AI Macro Overview",
+  "insights": [
+    {
+      "text": "Refined Insight 1",
+      "articleIndices": []
+    }
+  ]
+}`
+
+    const response = await getAi().models.generateContent({
+      model: INGEST_MODEL,
+      contents: prompt,
+      config: { responseMimeType: "application/json" },
+    })
+
+    const parsed = JSON.parse(response.text ?? "{}")
+    const headline =
+      typeof parsed.headline === "string" && parsed.headline.trim().length > 0
+        ? parsed.headline
+        : existingOverview.headline
+    const insights: GroundedInsight[] = Array.isArray(parsed.insights)
+      ? parsed.insights.map((item: { text?: string } | string) => ({
+          text: typeof item === "string" ? item : (item.text ?? ""),
+          sources: [],
+        }))
+      : existingOverview.insights.map((i: string | GroundedInsight) =>
+          typeof i === "string" ? { text: i, sources: [] } : i
+        )
+
+    await saveDigest({ headline, insights, generatedAt: now }, "overview")
+    log(`  All-Time Field Overview updated: "${headline.slice(0, 60)}…"`)
+  }
+}
+
+export async function seedAllDigests(
+  log: (msg: string) => void = console.log
+): Promise<void> {
+  log("Starting Cold Start Digest Seeding for all 4 scopes...")
+  log("[1/4] Generating Daily Digest...")
+  await generateAndSaveDigest(log)
+  log("[2/4] Generating Weekly Digest...")
+  await generateWeeklyDigest(log)
+  log("[3/4] Generating Monthly Digest (Cold Start)...")
+  await generateMonthlyDigest(log, true)
+  log("[4/4] Generating All-Time Field Overview (Cold Start)...")
+  await generateAllTimeOverview(log, true)
+  log("Cold Start Digest Seeding Complete!")
 }
 
 async function scoreRelevance(title: string, excerpt: string): Promise<number | null> {
@@ -915,6 +1147,7 @@ interface SummaryResult {
   topicTag: TopicTag
   sentiment: Sentiment
   entities: string[]
+  importanceScore: number
 }
 
 async function summariseCluster(articles: ArticleWithEmbedding[]): Promise<SummaryResult> {
@@ -923,26 +1156,17 @@ async function summariseCluster(articles: ArticleWithEmbedding[]): Promise<Summa
   const prompt = `You are a news curator. Given these ${articles.length} articles on a related AI topic, write:
 1. A 2–3 sentence summary that explains what happened and why it matters. Surface expert perspectives, not just event facts.
 2. The most relevant topic tag (one of: model-release, research, funding, product, policy, industry, agents, hardware, opinion, education, other).
-   - model-release: new model or major version announcement
-   - research: papers, benchmarks, academic findings
-   - funding: fundraising, acquisitions, IPOs, investments
-   - product: product launches, features, integrations, apps
-   - policy: regulation, legislation, government, safety standards
-   - industry: company strategy, exec moves, partnerships, org news
-   - agents: AI agents, agentic frameworks, autonomous systems
-   - hardware: chips, infrastructure, edge devices, robotics
-   - opinion: essays, commentary, hot takes, analysis pieces
-   - education: tutorials, courses, guides, explainers
-   - other: does not fit any of the above
 3. Overall sentiment (positive / neutral / negative).
 4. Up to 5 named entities (companies, people, models).
+5. An industry importance score from 1 to 10 (10 = landmark open-weights release, major architectural breakthrough, or historical regulation; 1 = minor app patch or opinion post).
 
 Output JSON:
 {
   "summary": "...",
   "topicTag": "...",
   "sentiment": "...",
-  "entities": ["..."]
+  "entities": ["..."],
+  "importanceScore": 7
 }
 
 Articles:
@@ -955,11 +1179,13 @@ ${articleList}`
       config: { responseMimeType: "application/json" },
     })
     const parsed = JSON.parse(response.text ?? "{}")
+    const importanceScore = typeof parsed.importanceScore === "number" ? Math.min(10, Math.max(1, parsed.importanceScore)) : 5
     return {
       summary: parsed.summary ?? articles[0].excerpt,
       topicTag: (parsed.topicTag as TopicTag) ?? "other",
       sentiment: (parsed.sentiment as Sentiment) ?? "neutral",
       entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+      importanceScore,
     }
   } catch {
     return {
@@ -967,6 +1193,7 @@ ${articleList}`
       topicTag: "other",
       sentiment: "neutral",
       entities: [],
+      importanceScore: 5,
     }
   }
 }

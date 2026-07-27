@@ -43,6 +43,8 @@ export default function AdminPage() {
   const [dedupMessage, setDedupMessage] = useState<string | null>(null)
   const [digestState, setDigestState] = useState<"idle" | "running" | "done" | "error">("idle")
   const [digestMessage, setDigestMessage] = useState<string | null>(null)
+  const [emailState, setEmailState] = useState<"idle" | "running" | "done" | "error">("idle")
+  const [emailMessage, setEmailMessage] = useState<string | null>(null)
 
   const [sortField, setSortField] = useState<"name" | "url" | "type" | "enabled" | null>(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
@@ -256,11 +258,15 @@ export default function AdminPage() {
     }
   }
 
-  async function handleGenerateDigest() {
+  async function handleGenerateDigest(scope: string = "daily") {
     setDigestState("running")
     setDigestMessage(null)
     try {
-      const r = await apiFetch("/api/admin/generate-digest", { method: "POST" })
+      const r = await apiFetch("/api/admin/generate-digest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scope }),
+      })
       const data = await r.json()
       if (!r.ok || !data.success) throw new Error(data.error ?? "Digest generation failed")
       setDigestMessage(data.message)
@@ -268,6 +274,21 @@ export default function AdminPage() {
     } catch (e) {
       setDigestMessage((e as Error).message)
       setDigestState("error")
+    }
+  }
+
+  async function handleSendTestEmail() {
+    setEmailState("running")
+    setEmailMessage(null)
+    try {
+      const r = await apiFetch("/api/admin/send-email", { method: "POST" })
+      const data = await r.json()
+      if (!r.ok || !data.success) throw new Error(data.error ?? "Failed to send email digest")
+      setEmailMessage(data.message)
+      setEmailState("done")
+    } catch (e) {
+      setEmailMessage((e as Error).message)
+      setEmailState("error")
     }
   }
 
@@ -573,27 +594,87 @@ export default function AdminPage() {
           </div>
 
           {/* Digest panel */}
-          <div className="border border-border p-4 flex items-center justify-between gap-4">
+          <div className="border border-border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <p className="font-sans text-sm text-foreground">Generate 3-day digest</p>
+              <p className="font-sans text-sm text-foreground font-semibold">Generate Multi-Scope Digests</p>
               <p className="font-sans text-xs text-muted-foreground mt-0.5">
-                Synthesize recent clusters from the past 3 days into grounded summary claims.
+                Synthesize grounded summaries for Daily, Weekly, Monthly, or All-Time Field Overview.
               </p>
               {digestMessage && (
                 <p
-                  className={`font-mono text-xs mt-1 ${digestState === "error" ? "text-red-500" : "text-muted-foreground"}`}
+                  className={`font-mono text-xs mt-1 ${digestState === "error" ? "text-red-500" : "text-green-500"}`}
                 >
                   {digestMessage}
                 </p>
               )}
             </div>
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleGenerateDigest("daily")}
+                disabled={digestState === "running"}
+                className="border border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 transition-colors"
+              >
+                Daily
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenerateDigest("weekly")}
+                disabled={digestState === "running"}
+                className="border border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 transition-colors"
+              >
+                Weekly
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenerateDigest("monthly")}
+                disabled={digestState === "running"}
+                className="border border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 transition-colors"
+              >
+                Monthly
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenerateDigest("overview")}
+                disabled={digestState === "running"}
+                className="border border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 transition-colors"
+              >
+                Overview
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenerateDigest("all")}
+                disabled={digestState === "running"}
+                className="border border-foreground bg-foreground text-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-foreground/90 disabled:opacity-50 font-semibold transition-colors"
+              >
+                {digestState === "running" ? "Seeding…" : "Seed All"}
+              </button>
+            </div>
+          </div>
+
+          {/* Email Digest panel */}
+          <div className="border border-border p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-sans text-sm text-foreground">Send Email Digest</p>
+              <p className="font-sans text-xs text-muted-foreground mt-0.5">
+                Trigger immediate email dispatch of the latest daily digest and past 24h stories to
+                test recipients.
+              </p>
+              {emailMessage && (
+                <p
+                  className={`font-mono text-xs mt-1 ${emailState === "error" ? "text-red-500" : "text-green-500"}`}
+                >
+                  {emailMessage}
+                </p>
+              )}
+            </div>
             <button
               type="button"
-              onClick={handleGenerateDigest}
-              disabled={digestState === "running"}
+              onClick={handleSendTestEmail}
+              disabled={emailState === "running"}
               className="shrink-0 border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {digestState === "running" ? "Running…" : "Run digest"}
+              {emailState === "running" ? "Sending…" : "Send Test Email"}
             </button>
           </div>
 

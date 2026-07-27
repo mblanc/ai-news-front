@@ -1,5 +1,5 @@
 import { Firestore, FieldValue, type QueryDocumentSnapshot } from "@google-cloud/firestore"
-import type { Cluster, ClusterArticle, Digest, Source } from "@/lib/types"
+import type { Cluster, ClusterArticle, Digest, DigestScope, Source } from "@/lib/types"
 
 // Initialize Google Cloud Firestore
 // For production, you should use service account credentials
@@ -56,6 +56,7 @@ function mapDocToCluster(doc: QueryDocumentSnapshot): Cluster {
     createdAt,
     publishedAt,
     expireAt: d.expireAt?.toDate?.() ?? undefined,
+    importanceScore: d.importanceScore ?? undefined,
   } satisfies Cluster
 }
 
@@ -114,27 +115,53 @@ export async function getRecentClusterCentroids(days = 3): Promise<StoredCluster
 }
 
 export async function saveDigest(
-  digest: Omit<Digest, "generatedAt"> & { generatedAt: Date }
+  digest: Omit<Digest, "generatedAt"> & { generatedAt: Date },
+  scope: DigestScope = "daily"
 ): Promise<void> {
-  await db.collection("digest").doc("latest").set({
+  const docId = scope === "daily" ? "latest" : scope
+  await db.collection("digest").doc(docId).set({
     headline: digest.headline,
     insights: digest.insights,
     generatedAt: digest.generatedAt,
+    scope,
   })
+  if (scope === "daily") {
+    await db.collection("digest").doc("daily").set({
+      headline: digest.headline,
+      insights: digest.insights,
+      generatedAt: digest.generatedAt,
+      scope: "daily",
+    })
+  }
 }
 
-export async function getLatestDigest(): Promise<Digest | null> {
+export async function getLatestDigest(scope: DigestScope = "daily"): Promise<Digest | null> {
   try {
-    const doc = await db.collection("digest").doc("latest").get()
-    if (!doc.exists) return null
+    const docId = scope === "daily" ? "latest" : scope
+    const doc = await db.collection("digest").doc(docId).get()
+    if (!doc.exists) {
+      if (scope === "daily") {
+        const latestDoc = await db.collection("digest").doc("latest").get()
+        if (!latestDoc.exists) return null
+        const d = latestDoc.data()!
+        return {
+          headline: d.headline ?? "",
+          insights: d.insights ?? [],
+          generatedAt: d.generatedAt?.toDate?.() ?? new Date(),
+          scope: "daily",
+        }
+      }
+      return null
+    }
     const d = doc.data()!
     return {
       headline: d.headline ?? "",
       insights: d.insights ?? [],
       generatedAt: d.generatedAt?.toDate?.() ?? new Date(),
+      scope: (d.scope as DigestScope) ?? scope,
     }
   } catch (error) {
-    console.error("Error fetching digest:", error)
+    console.error(`Error fetching digest (${scope}):`, error)
     return null
   }
 }

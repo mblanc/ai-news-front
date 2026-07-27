@@ -1,13 +1,40 @@
-import { NextResponse } from "next/server"
-import { generateAndSaveDigest } from "@/lib/ingest"
+import { NextRequest, NextResponse } from "next/server"
+import {
+  generateAndSaveDigest,
+  generateWeeklyDigest,
+  generateMonthlyDigest,
+  generateAllTimeOverview,
+  seedAllDigests,
+} from "@/lib/ingest"
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const logs: string[] = []
-    await generateAndSaveDigest((msg) => logs.push(msg))
+    const log = (msg: string) => logs.push(msg)
+
+    let scope = "daily"
+    try {
+      const body = await request.json()
+      if (body?.scope) scope = body.scope
+    } catch {
+      // Body may be empty, default to daily
+    }
+
+    if (scope === "weekly") {
+      await generateWeeklyDigest(log)
+    } else if (scope === "monthly") {
+      await generateMonthlyDigest(log, true)
+    } else if (scope === "overview") {
+      await generateAllTimeOverview(log, true)
+    } else if (scope === "all") {
+      await seedAllDigests(log)
+    } else {
+      await generateAndSaveDigest(log)
+    }
+
     return NextResponse.json({
       success: true,
-      message: "Daily digest generated successfully.",
+      message: `Digest (${scope}) generated successfully.`,
       logs,
     })
   } catch (e) {
