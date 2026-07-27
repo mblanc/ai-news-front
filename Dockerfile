@@ -1,4 +1,5 @@
 FROM node:23-alpine AS base
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
     
 # Install dependencies only when needed
 FROM base AS deps
