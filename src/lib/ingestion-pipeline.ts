@@ -11,6 +11,7 @@ export interface ExtractedContent {
   title: string
   bodyMd: string
   excerpt: string
+  fallbackSource?: string
 }
 
 export interface ExtractorAdapter {
@@ -23,9 +24,12 @@ export interface ScorerAdapter {
 }
 
 export interface ClusterEngineAdapter {
-  clusterScoredArticle(
-    article: Article
-  ): Promise<{ clusterId: string; isNewCluster: boolean; embedding?: number[] }>
+  clusterScoredArticle(article: Article): Promise<{
+    clusterId: string
+    isNewCluster: boolean
+    embedding?: number[]
+    clusterSummary?: string
+  }>
 }
 
 export interface RepositoryAdapter {
@@ -102,7 +106,7 @@ export class IngestionPipeline {
     }
 
     // Step 1: Load sources
-    emit("load_sources", 1, "Loading news sources")
+    emit("load_sources", 1, "Step 1/9 — Loading sources")
     let enabledSources: Source[] = []
     if (sourcesParam && sourcesParam.length > 0) {
       enabledSources = sourcesParam.filter((s) => s.enabled)
@@ -112,8 +116,20 @@ export class IngestionPipeline {
     }
     stats.sources = enabledSources.length
 
+    if (enabledSources.length === 0) {
+      emit("load_sources", 1, "No enabled sources found. Stopping.")
+      stats.duration_ms = Date.now() - startTime
+      return stats
+    }
+
+    emit(
+      "load_sources",
+      1,
+      `Found ${enabledSources.length} enabled source${enabledSources.length === 1 ? "" : "s"}`
+    )
+
     // Step 2: Fetch feed URLs
-    emit("fetch_feed", 2, `Fetching URLs from ${enabledSources.length} sources`)
+    emit("fetch_feed", 2, "Step 2/9 — Resolving article URLs")
     const rawItems: Array<{ url: string; title: string; source: Source; pubDate?: Date | null }> =
       []
 
@@ -121,37 +137,50 @@ export class IngestionPipeline {
       const targetUrl = source.feedUrl || source.url
       try {
         const items = await this.extractor.fetchFeedUrls(targetUrl)
+        let tooOldCount = 0
+        let keptCount = 0
+        const cutoffTime = new Date(Date.now() - THREE_DAYS_MS)
+
         for (const item of items) {
-          rawItems.push({
-            url: item.url,
-            title: item.title,
-            source,
-            pubDate: item.pubDate,
-          })
+          if (item.pubDate && item.pubDate < cutoffTime) {
+            tooOldCount++
+            stats.too_old++
+          } else {
+            keptCount++
+            rawItems.push({
+              url: item.url,
+              title: item.title,
+              source,
+              pubDate: item.pubDate,
+            })
+          }
         }
-      } catch {
-        // Continue loop if feed fetch fails
+
+        emit(
+          "fetch_feed",
+          2,
+          `  [${source.name}]: ${items.length} items (${tooOldCount} too old, ${keptCount} kept)`
+        )
+      } catch (err) {
+        emit("fetch_feed", 2, `  Error resolving ${source.name}: ${(err as Error).message}`)
       }
     }
     stats.urls_found = rawItems.length
+    emit(
+      "fetch_feed",
+      2,
+      `Resolved ${stats.urls_found} unique URLs (${stats.too_old} filtered as too old)`
+    )
 
-    // Step 3: Age cutoff check (3-day window)
-    emit("fetch_feed", 3, "Checking article age limits")
-    const cutoff = new Date(Date.now() - THREE_DAYS_MS)
-    const validAgeItems: typeof rawItems = []
+    // Step 3: Deduplicate against existing repository records
+    emit("deduplicate", 3, "Step 3/9 — Deduplicating against existing articles")
+    const newCandidates: typeof rawItems = []
+    const seenUrls = new Set<string>()
 
     for (const item of rawItems) {
-      if (item.pubDate && item.pubDate < cutoff) {
-        stats.too_old++
-      } else {
-        validAgeItems.push(item)
-      }
-    }
+      if (seenUrls.has(item.url)) continue
+      seenUrls.add(item.url)
 
-    // Step 4: Deduplicate against existing repository records
-    emit("deduplicate", 4, "Checking for existing article hashes")
-    const newCandidates: typeof validAgeItems = []
-    for (const item of validAgeItems) {
       const urlHash = sha256(item.url)
       const exists = await this.repository.isUrlHashExisting(urlHash)
       if (!exists) {
@@ -159,22 +188,46 @@ export class IngestionPipeline {
       }
     }
 
-    // Step 5 & 6 & 7 & 8: Scrape, score, cluster, persist
-    for (const candidate of newCandidates) {
-      const urlHash = sha256(candidate.url)
+    emit(
+      "deduplicate",
+      3,
+      `  ${newCandidates.length} new URLs to scrape (${stats.urls_found - newCandidates.length} already ingested)`
+    )
 
-      // Step 5: Scrape content
-      emit("scrape_content", 5, `Scraping content for: ${candidate.title}`)
+    // Step 4: Scrape content
+    emit("scrape_content", 4, "Step 4/9 — Scraping articles")
+    const scrapedArticles: Array<{
+      candidate: (typeof newCandidates)[0]
+      content: ExtractedContent
+    }> = []
+
+    for (const candidate of newCandidates) {
+      let domain = candidate.source.name
+      try {
+        domain = new URL(candidate.url).hostname
+      } catch {
+        // Fallback to source name
+      }
+
+      emit("scrape_content", 4, `  Scraping [${domain}]: ${candidate.url}`)
       let content: ExtractedContent
       try {
         content = await this.extractor.scrapeContent(candidate.url)
-      } catch {
+        if (content.fallbackSource) {
+          emit("scrape_content", 4, `  Saved via ${content.fallbackSource}: ${candidate.url}`)
+        } else {
+          emit("scrape_content", 4, `  Saved: "${content.title || candidate.title}"`)
+        }
+        scrapedArticles.push({ candidate, content })
+      } catch (_err) {
+        emit("scrape_content", 4, `  No content extracted [${domain}] — marking as fetch_failed`)
+        const urlHash = sha256(candidate.url)
         const failedArticle: Article = {
           id: urlHash,
           url: candidate.url,
           urlHash,
           title: candidate.title,
-          domain: candidate.source.name,
+          domain,
           sourceId: candidate.source.id,
           sourceName: candidate.source.name,
           sourceCategory: candidate.source.category,
@@ -186,11 +239,25 @@ export class IngestionPipeline {
           ingestedAt: new Date(),
         }
         await this.repository.saveArticle(failedArticle)
-        continue
       }
+    }
 
-      // Step 6: Score relevance
-      emit("score_relevance", 6, `Scoring relevance for: ${candidate.title}`)
+    stats.new_articles = scrapedArticles.length
+    emit(
+      "scrape_content",
+      4,
+      `Scraped ${stats.new_articles} article${stats.new_articles === 1 ? "" : "s"}`
+    )
+
+    // Step 5: Score relevance
+    emit("score_relevance", 5, "Step 5/9 — Scoring relevance")
+    const relevantArticles: Array<{
+      candidate: (typeof newCandidates)[0]
+      content: ExtractedContent
+      score: number
+    }> = []
+
+    for (const { candidate, content } of scrapedArticles) {
       let score = 5
       try {
         score = await this.scorer.scoreArticle(content.title, content.bodyMd, content.excerpt)
@@ -200,11 +267,39 @@ export class IngestionPipeline {
 
       if (score < RELEVANCE_THRESHOLD) {
         stats.discarded++
-        continue
+        emit(
+          "score_relevance",
+          5,
+          `  Discarded (score ${score}/10): "${content.title || candidate.title}"`
+        )
+      } else {
+        relevantArticles.push({
+          candidate,
+          content: { ...content, title: content.title || candidate.title },
+          score,
+        })
+        emit(
+          "score_relevance",
+          5,
+          `  Relevant (score ${score}/10): "${content.title || candidate.title}"`
+        )
       }
+    }
 
-      stats.new_articles++
+    stats.new_articles = relevantArticles.length
+    emit(
+      "score_relevance",
+      5,
+      `Scoring done: ${relevantArticles.length} relevant, ${stats.discarded} discarded`
+    )
 
+    // Step 6: Generate embeddings & Step 7: Cluster & Step 8: Persist
+    emit("cluster_articles", 6, "Step 6/9 — Generating embeddings")
+    emit("cluster_articles", 7, "Step 7/9 — Clustering")
+    emit("cluster_articles", 8, "Step 8/9 — Persisting results")
+
+    for (const { candidate, content, score } of relevantArticles) {
+      const urlHash = sha256(candidate.url)
       let domain = candidate.source.name
       try {
         domain = new URL(candidate.url).hostname
@@ -216,7 +311,7 @@ export class IngestionPipeline {
         id: urlHash,
         url: candidate.url,
         urlHash,
-        title: content.title || candidate.title,
+        title: content.title,
         domain,
         sourceId: candidate.source.id,
         sourceName: candidate.source.name,
@@ -229,8 +324,8 @@ export class IngestionPipeline {
         ingestedAt: new Date(),
       }
 
-      // Step 7: Embed & Cluster
-      emit("cluster_articles", 7, `Clustering article: ${article.title}`)
+      emit("cluster_articles", 6, `  Embedded: "${article.title}"`)
+
       try {
         const clusterRes = await this.clusterEngine.clusterScoredArticle(article)
         article.status = "clustered"
@@ -240,21 +335,35 @@ export class IngestionPipeline {
         stats.clustered++
         if (clusterRes.isNewCluster) {
           stats.clusters_created++
+          emit("cluster_articles", 7, `  Created new cluster: "${article.title}"`)
+        } else {
+          emit(
+            "cluster_articles",
+            7,
+            `  Matched existing cluster: "${article.title}" -> "${clusterRes.clusterSummary || article.title}"`
+          )
         }
       } catch {
         // Keep status scored if clustering fails
       }
 
-      // Step 8: Persist article
       await this.repository.saveArticle(article)
     }
 
     // Step 9: Purge TTL expired articles
-    emit("purge_ttl", 9, "Purging expired articles")
-    await this.repository.purgeExpiredArticles()
+    emit("purge_ttl", 9, "Step 9/9 — Purging expired articles")
+    const purgedCount = await this.repository.purgeExpiredArticles()
+    if (purgedCount > 0) {
+      emit("purge_ttl", 9, `Purged ${purgedCount} expired article${purgedCount === 1 ? "" : "s"}`)
+    }
 
     stats.duration_ms = Date.now() - startTime
-    emit("complete", 9, `Pipeline complete. Clustered ${stats.clustered} new articles.`)
+    const durationSec = (stats.duration_ms / 1000).toFixed(1)
+    emit(
+      "complete",
+      9,
+      `Ingest pipeline complete in ${durationSec}s. Clustered ${stats.clustered} new articles into ${stats.clusters_created} new clusters.`
+    )
 
     return stats
   }
@@ -319,12 +428,14 @@ export function createProductionIngestionPipeline(): IngestionPipeline {
         const result = clusterWithExisting([articleWithEmb], existingForCluster)
         let clusterId = ""
         let isNewCluster = false
+        let clusterSummary = article.title
 
         if (result.newClusters.length > 0) {
           isNewCluster = true
           const newC = result.newClusters[0]
           const ref = db.collection("clusters").doc()
           clusterId = ref.id
+          clusterSummary = article.title
           await ref.set({
             summary: article.title,
             topicTag: "other",
@@ -350,10 +461,11 @@ export function createProductionIngestionPipeline(): IngestionPipeline {
         } else if (result.updatedClusters.length > 0) {
           const upC = result.updatedClusters[0]
           clusterId = upC.id
+          clusterSummary = article.title
           await updateCluster(upC.id, upC.articles, upC.centroid)
         }
 
-        return { clusterId, isNewCluster, embedding }
+        return { clusterId, isNewCluster, embedding, clusterSummary }
       },
     },
     repository: {
