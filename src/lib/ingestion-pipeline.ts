@@ -24,9 +24,7 @@ export interface ScorerAdapter {
 }
 
 export interface ClusterEngineAdapter {
-  clusterScoredArticle(
-    article: Article
-  ): Promise<{
+  clusterScoredArticle(article: Article): Promise<{
     clusterId: string
     isNewCluster: boolean
     embedding?: number[]
@@ -550,10 +548,21 @@ export function createProductionIngestionPipeline(): IngestionPipeline {
         const { db } = await import("@/lib/firebase")
         const now = new Date()
         const snap = await db.collection("articles").where("expireAt", "<=", now).get()
-        const batch = db.batch()
-        snap.docs.forEach((doc) => batch.delete(doc.ref))
-        await batch.commit()
-        return snap.size
+        if (snap.empty) return 0
+
+        const BATCH_SIZE = 400
+        const docs = snap.docs
+        let totalPurged = 0
+
+        for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+          const chunk = docs.slice(i, i + BATCH_SIZE)
+          const batch = db.batch()
+          chunk.forEach((doc) => batch.delete(doc.ref))
+          await batch.commit()
+          totalPurged += chunk.length
+        }
+
+        return totalPurged
       },
     },
   })
