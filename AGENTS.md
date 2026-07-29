@@ -80,3 +80,13 @@ Optional: `FIRECRAWL_API_KEY`
 - **Radix UI + shadcn/ui** for component library
 - **Vitest** for testing (node environment)
 - Path alias `@/*` maps to project root
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues (`mblanc/ai-news-front`). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context layout (`CONTEXT.md` + `docs/adr/`). See `docs/agents/domain.md`.

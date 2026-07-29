@@ -104,3 +104,32 @@ export interface Digest {
   scope?: DigestScope
   category?: SourceCategory | "all"
 }
+
+export interface IngestStats {
+  duration_ms: number
+  sources: number
+  urls_found: number
+  too_old: number
+  new_articles: number
+  discarded: number
+  clustered: number
+  clusters_created: number
+}
+
+export type IngestStage =
+  | "load_sources"
+  | "fetch_feed"
+  | "deduplicate"
+  | "scrape_content"
+  | "score_relevance"
+  | "cluster_articles"
+  | "purge_ttl"
+  | "complete"
+
+export interface IngestProgressEvent {
+  stage: IngestStage
+  stepNumber: number
+  totalSteps: number
+  message: string
+  stats?: Partial<IngestStats>
+}
