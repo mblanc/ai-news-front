@@ -17,7 +17,7 @@ vi.stubGlobal(
   vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve("<rss></rss>") })
 )
 
-import { parseRssFeed } from "../rss"
+import { parseRssFeed, sanitizeXmlEntities, findRssLink } from "../rss"
 
 const now = new Date()
 
@@ -31,6 +31,42 @@ let mockItems: Array<{ link?: string; isoDate?: string }> = []
 
 beforeEach(() => {
   mockItems = []
+})
+
+describe("sanitizeXmlEntities", () => {
+  it("replaces unescaped ampersands with &amp;", () => {
+    const raw = "<item><title>Foo & Bar & Baz</title></item>"
+    const result = sanitizeXmlEntities(raw)
+    expect(result).toBe("<item><title>Foo &amp; Bar &amp; Baz</title></item>")
+  })
+
+  it("preserves already valid XML entities", () => {
+    const raw =
+      "<item><title>Foo &amp; Bar &lt; Baz &gt; &quot;Q&quot; &apos;A&apos; &#38;</title></item>"
+    const result = sanitizeXmlEntities(raw)
+    expect(result).toBe(raw)
+  })
+})
+
+describe("findRssLink", () => {
+  it("extracts RSS link from HTML header", () => {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <link rel="alternate" type="application/rss+xml" href="https://example.com/blog/feed.xml" />
+        </head>
+      </html>
+    `
+    const result = findRssLink(html, "https://example.com/blog")
+    expect(result).toBe("https://example.com/blog/feed.xml")
+  })
+
+  it("returns null when no RSS link tag exists", () => {
+    const html = "<html><head><title>No Feed</title></head></html>"
+    const result = findRssLink(html, "https://example.com/blog")
+    expect(result).toBeNull()
+  })
 })
 
 describe("parseRssFeed", () => {

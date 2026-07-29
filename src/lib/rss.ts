@@ -1,4 +1,5 @@
 import Parser from "rss-parser"
+import { JSDOM } from "jsdom"
 import { assertSafeUrl, isRedditUrl, REDDIT_USER_AGENT } from "@/lib/scrape"
 
 export interface RssItem {
@@ -32,7 +33,25 @@ async function redditRateLimit() {
   lastRedditFetchTimestamp = Date.now()
 }
 
-async function fetchFeedXml(feedUrl: string): Promise<string> {
+export function sanitizeXmlEntities(xml: string): string {
+  // Replace unescaped & that are not part of valid XML entities
+  return xml.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;")
+}
+
+export function findRssLink(html: string, baseUrl: string): string | null {
+  try {
+    const doc = new JSDOM(html, { url: baseUrl })
+    const link = doc.window.document.querySelector<HTMLLinkElement>(
+      'link[rel="alternate"][type="application/rss+xml"], link[rel="alternate"][type="application/atom+xml"]'
+    )
+    if (!link?.href) return null
+    return link.href
+  } catch {
+    return null
+  }
+}
+
+async function fetchFeedXml(feedUrl: string): Promise<{ text: string; isHtml: boolean }> {
   assertSafeUrl(feedUrl)
   const headers = { ...BROWSER_HEADERS }
   if (isRedditUrl(feedUrl)) {
@@ -44,17 +63,18 @@ async function fetchFeedXml(feedUrl: string): Promise<string> {
 
   // Retry on 429 (Rate Limit) with backoff
   if (res && res.status === 429) {
-    await sleep(1500)
+    await sleep(2000)
     res = await fetch(feedUrl, { headers }).catch(() => null)
   }
 
   if (res && res.ok) {
     const text = await res.text()
     const trimmed = text.trimStart()
-    if (trimmed.startsWith("<!DOCTYPE html") || trimmed.startsWith("<html")) {
-      throw new Error("Feed URL returned an HTML page instead of valid RSS XML")
-    }
-    return text
+    const isHtml =
+      trimmed.startsWith("<!DOCTYPE html") ||
+      trimmed.startsWith("<html") ||
+      trimmed.startsWith("<HTML")
+    return { text, isHtml }
   }
 
   const status = res?.status ?? "network_error"
@@ -72,7 +92,11 @@ async function fetchFeedXml(feedUrl: string): Promise<string> {
     if (fc && fc.ok) {
       const data = await fc.json()
       const html: string = data.data?.rawHtml ?? ""
-      if (html) return html
+      if (html) {
+        const trimmed = html.trimStart()
+        const isHtml = trimmed.startsWith("<!DOCTYPE html") || trimmed.startsWith("<html")
+        return { text: html, isHtml }
+      }
     }
   }
 
@@ -87,7 +111,44 @@ function parseItems(feed: Parser.Output<Record<string, unknown>>): RssItem[] {
 }
 
 export async function parseRssFeed(feedUrl: string): Promise<RssItem[]> {
-  const xml = await fetchFeedXml(feedUrl)
-  const feed = await parser.parseString(xml)
+  let { text, isHtml } = await fetchFeedXml(feedUrl)
+
+  if (isHtml) {
+    // Autodiscover RSS link inside HTML
+    const autodiscoveredUrl = findRssLink(text, feedUrl)
+    if (autodiscoveredUrl && autodiscoveredUrl !== feedUrl) {
+      const res = await fetchFeedXml(autodiscoveredUrl)
+      if (!res.isHtml) {
+        text = res.text
+        isHtml = false
+      }
+    }
+
+    if (isHtml) {
+      // Try common feed paths if autodiscovery link tag wasn't found
+      const commonPaths = ["/feed", "/rss.xml", "/atom.xml", "/feed.xml", "/index.xml"]
+      const origin = new URL(feedUrl).origin
+      for (const path of commonPaths) {
+        try {
+          const candidateUrl = new URL(path, origin).toString()
+          const res = await fetchFeedXml(candidateUrl)
+          if (!res.isHtml) {
+            text = res.text
+            isHtml = false
+            break
+          }
+        } catch {
+          // Continue to next candidate path
+        }
+      }
+    }
+
+    if (isHtml) {
+      throw new Error("Feed URL returned an HTML page instead of valid RSS XML")
+    }
+  }
+
+  const sanitized = sanitizeXmlEntities(text)
+  const feed = await parser.parseString(sanitized)
   return parseItems(feed)
 }
