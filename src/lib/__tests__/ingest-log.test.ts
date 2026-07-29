@@ -45,4 +45,17 @@ describe("isIngestErrorLine", () => {
       false
     )
   })
+
+  it("does not falsely classify titles containing 'terrorism' or words with 'error' substrings as error lines", () => {
+    expect(
+      isIngestErrorLine(
+        '  Saved: "Russia charges Telegram’s Durov with aiding terrorism and adds him to a wanted list"'
+      )
+    ).toBe(false)
+    expect(
+      isIngestErrorLine(
+        '  Discarded (score 3/10): "Security report discusses counter-terrorism measures"'
+      )
+    ).toBe(false)
+  })
 })
