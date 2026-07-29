@@ -1,81 +1,65 @@
-import { GoogleGenAI } from "@google/genai"
-import { FieldValue } from "@google-cloud/firestore"
-import { JSDOM } from "jsdom"
+import { createProductionIngestionPipeline } from "@/lib/ingestion-pipeline"
+import { DigestGenerator, createProductionDigestGenerator } from "@/lib/digest-generator"
 import { db } from "@/lib/firebase"
-import { sha256 } from "@/lib/hash"
-import { fetchArticle, HttpError, assertSafeUrl } from "@/lib/scrape"
-import { parseRssFeed } from "@/lib/rss"
-import {
-  embed,
-  clusterWithExisting,
-  toClusterArticle,
-  type ArticleWithEmbedding,
-  type ExistingCluster,
-} from "@/lib/cluster"
-import {
-  getRecentClusterCentroids,
-  getClustersByDateRange,
-  getClusters,
-  getLatestDigest,
-  updateCluster,
-  saveDigest,
-  getTtlExpirationDate,
-} from "@/lib/firebase"
-import type {
-  Source,
-  SourceCategory,
-  TopicTag,
-  Sentiment,
-  GroundedInsight,
-  DigestSource,
-  Cluster,
-  ClusterArticle,
-  DigestScope,
-} from "@/lib/types"
+import type { Cluster, Digest, DigestScope, IngestStats, SourceCategory } from "@/lib/types"
 
-const INGEST_MODEL = process.env.INGEST_MODEL ?? "gemini-3.5-flash-lite"
-const THREE_DAYS_MS = 72 * 60 * 60 * 1000
-const MAX_BODY_CHARS = 50_000
-const DOMAIN_DELAY_MS = 500
+export type { IngestStats } from "@/lib/types"
 
-let aiInstance: GoogleGenAI | null = null
+const LOCK_DOC = "_locks/ingest"
+const LOCK_TTL_MS = 15 * 60 * 1000
 
-function getAi() {
-  if (!aiInstance) {
-    aiInstance = new GoogleGenAI({
-      enterprise: true,
-      project: process.env.GOOGLE_CLOUD_PROJECT_ID,
-      location: process.env.GOOGLE_CLOUD_LOCATION ?? "global",
-    })
+async function acquireIngestLock(): Promise<boolean> {
+  const ref = db.doc(LOCK_DOC)
+  const snap = await ref.get()
+  if (snap.exists) {
+    const data = snap.data()
+    const acquiredAt = data?.acquiredAt?.toDate?.()?.getTime() ?? 0
+    if (Date.now() - acquiredAt < LOCK_TTL_MS) {
+      return false
+    }
   }
-  return aiInstance
+  await ref.set({ acquiredAt: new Date() })
+  return true
 }
 
-export interface IngestStats {
-  duration_ms: number
-  sources: number
-  urls_found: number
-  too_old: number
-  new_articles: number
-  discarded: number
-  clustered: number
-  clusters_created: number
+async function releaseIngestLock(): Promise<void> {
+  await db.doc(LOCK_DOC).delete()
 }
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+/**
+ * Main ingestion entrypoint — delegates to IngestionPipeline with distributed lock.
+ */
+export async function runIngest(log: (msg: string) => void = console.log): Promise<IngestStats> {
+  const start = Date.now()
+  const locked = await acquireIngestLock()
+  if (!locked) {
+    log("Ingest already in progress — skipping (distributed lock held)")
+    return {
+      duration_ms: Date.now() - start,
+      sources: 0,
+      urls_found: 0,
+      too_old: 0,
+      new_articles: 0,
+      discarded: 0,
+      clustered: 0,
+      clusters_created: 0,
+    }
+  }
 
-function hostname(url: string): string {
   try {
-    return new URL(url).hostname
-  } catch {
-    return url
+    const pipeline = createProductionIngestionPipeline()
+    const stats = await pipeline.ingest(undefined, {
+      onProgress: (evt) => log(evt.message),
+    })
+    return stats
+  } finally {
+    await releaseIngestLock()
   }
 }
 
-function sleep(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms))
-}
-
+/**
+ * Concurrency helper function.
+ */
 export async function runWithConcurrencyLimit<T, R>(
   items: T[],
   limit: number,
@@ -100,1248 +84,81 @@ export async function runWithConcurrencyLimit<T, R>(
   return results
 }
 
-async function findRssLink(html: string, baseUrl: string): Promise<string | null> {
-  const doc = new JSDOM(html, { url: baseUrl })
-  const link = doc.window.document.querySelector<HTMLLinkElement>(
-    'link[rel="alternate"][type="application/rss+xml"], link[rel="alternate"][type="application/atom+xml"]'
-  )
-  if (!link?.href) return null
-  try {
-    return new URL(link.href, baseUrl).href
-  } catch {
-    return null
-  }
+/**
+ * Digest entrypoints — delegate to DigestGenerator.
+ */
+export async function generateAndSaveDigest(
+  log: (msg: string) => void = console.log,
+  scope: DigestScope = "daily",
+  category?: SourceCategory
+): Promise<Digest> {
+  log(`Generating digest for scope: ${scope}...`)
+  const generator = createProductionDigestGenerator()
+  const digest = await generator.generateDigest(scope, category)
+  log(`Digest generated: "${digest.headline}"`)
+  return digest
 }
 
-async function extractUrlsWithLlm(markdown: string, baseUrl: string): Promise<string[]> {
-  const today = new Date().toISOString().slice(0, 10)
-  const prompt = `Extract article URLs published in the last 3 days from the following webpage content.
-Today's date is ${today}.
-Return only a JSON array of absolute URLs: ["https://...", ...]
-If a URL is relative, resolve it against the base URL: ${baseUrl}
-If a publication date is visible next to a link, exclude articles older than 3 days.
-If no date is visible for an article, include it (date will be verified after fetching).
-Ignore pagination, tag, category, and author links.
-
-Content:
-${markdown.slice(0, 8000)}`
-
-  const response = await getAi().models.generateContent({
-    model: INGEST_MODEL,
-    contents: prompt,
-    config: { responseMimeType: "application/json" },
-  })
-
-  try {
-    const text = response.text ?? "[]"
-    const parsed = JSON.parse(text)
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .filter((u): u is string => typeof u === "string")
-      .filter((u) => {
-        try {
-          const p = new URL(u)
-          return p.protocol === "https:" || p.protocol === "http:"
-        } catch {
-          return false
-        }
-      })
-  } catch {
-    return []
-  }
+export async function generateWeeklyDigest(
+  log: (msg: string) => void = console.log,
+  _force?: boolean
+): Promise<Digest> {
+  return generateAndSaveDigest(log, "weekly")
 }
 
-async function resolveSourceUrls(
-  source: Source,
-  log: (msg: string) => void
-): Promise<{ url: string; pubDate: Date | null }[]> {
-  const sLog = (msg: string) => log(`  [${source.name} | ${source.url}] ${msg}`)
-
-  const isRssUrl = (url: string) => {
-    const lower = url.toLowerCase()
-    return (
-      lower.includes(".rss") ||
-      lower.includes("/rss") ||
-      lower.endsWith("/feed") ||
-      lower.includes("/feed/") ||
-      lower.includes("/atom") ||
-      lower.endsWith(".xml")
-    )
-  }
-
-  if (source.type === "rss" || source.feedUrl || isRssUrl(source.url)) {
-    const feedUrl = source.feedUrl ?? source.url
-    sLog(`RSS feed: ${feedUrl}`)
-    try {
-      return await parseRssFeed(feedUrl)
-    } catch (err) {
-      sLog(`RSS feed failed (${(err as Error).message}) — falling back to page URL extraction`)
-    }
-  }
-
-  // page source — try RSS autodiscovery first
-  assertSafeUrl(source.url)
-  sLog(`Fetching page: ${source.url}`)
-  const res = await fetch(source.url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    },
-  }).catch(() => null)
-
-  if (!res || !res.ok) {
-    const status = res?.status ?? "network error"
-    if (process.env.FIRECRAWL_API_KEY) {
-      sLog(`Failed to fetch page (${status}) — trying Firecrawl`)
-      const fc = await firecrawlFetch(source.url)
-      if (fc) {
-        const urls = await extractUrlsWithLlm(fc, source.url)
-        sLog(`LLM extracted ${urls.length} URLs via Firecrawl`)
-        return urls.map((url) => ({ url, pubDate: null }))
-      }
-    }
-    sLog(`Failed to fetch page (${status})`)
-    return []
-  }
-
-  const html = await res.text()
-  const feedUrl = await findRssLink(html, source.url)
-
-  if (feedUrl) {
-    sLog(`Discovered RSS: ${feedUrl}`)
-    await db.collection("sources").doc(source.id).update({ feedUrl })
-    return parseRssFeed(feedUrl)
-  }
-
-  sLog(`No RSS found — using LLM to extract article URLs`)
-  const { JSDOM: _JSDOM } = await import("jsdom")
-  const { default: TurndownService } = await import("turndown")
-  const doc = new _JSDOM(html, { url: source.url })
-
-  // Convert full body HTML to markdown so all listing links are preserved for the LLM
-  const td = new TurndownService({ headingStyle: "atx" })
-  const bodyHtml = doc.window.document.body?.innerHTML ?? html
-  let markdown = td.turndown(bodyHtml)
-
-  if (markdown.length < 500 && process.env.FIRECRAWL_API_KEY) {
-    sLog(`Insufficient content from page — trying Firecrawl`)
-    const fc = await firecrawlFetch(source.url)
-    if (fc) markdown = fc
-  }
-
-  if (!markdown) {
-    sLog(`No page markdown extracted`)
-    return []
-  }
-
-  const urls = await extractUrlsWithLlm(markdown, source.url)
-  sLog(`LLM extracted ${urls.length} URLs`)
-  return urls.map((url) => ({ url, pubDate: null }))
+export async function generateMonthlyDigest(
+  log: (msg: string) => void = console.log,
+  _force?: boolean
+): Promise<Digest> {
+  return generateAndSaveDigest(log, "monthly")
 }
 
-// ─── main pipeline ─────────────────────────────────────────────────────────────
-
-const LOCK_DOC = "_locks/ingest"
-const LOCK_TTL_MS = 30 * 60 * 1000 // 30 minutes — stale lock threshold
-
-async function acquireIngestLock(): Promise<boolean> {
-  const lockRef = db.doc(LOCK_DOC)
-  return db.runTransaction(async (tx) => {
-    const lock = await tx.get(lockRef)
-    if (lock.exists) {
-      const lockedAt: number = lock.data()!.lockedAt?.toMillis?.() ?? 0
-      if (Date.now() - lockedAt < LOCK_TTL_MS) return false // another run is active
-    }
-    tx.set(lockRef, { lockedAt: FieldValue.serverTimestamp() })
-    return true
-  })
+export async function generateAllTimeOverview(
+  log: (msg: string) => void = console.log,
+  _force?: boolean
+): Promise<Digest> {
+  return generateAndSaveDigest(log, "overview")
 }
 
-async function releaseIngestLock(): Promise<void> {
-  await db.doc(LOCK_DOC).delete()
-}
-
-export async function runIngest(log: (msg: string) => void = console.log): Promise<IngestStats> {
-  const start = Date.now()
-  const stats: IngestStats = {
-    duration_ms: 0,
-    sources: 0,
-    urls_found: 0,
-    too_old: 0,
-    new_articles: 0,
-    discarded: 0,
-    clustered: 0,
-    clusters_created: 0,
-  }
-
-  const locked = await acquireIngestLock()
-  if (!locked) {
-    log("Ingest already in progress — skipping (distributed lock held)")
-    stats.duration_ms = Date.now() - start
-    return stats
-  }
-
-  try {
-    // Step 1 — load enabled sources
-    log("Step 1/9 — Loading sources")
-    const sourcesSnap = await db.collection("sources").where("enabled", "==", true).get()
-    const sources = sourcesSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Source)
-    stats.sources = sources.length
-    if (sources.length === 0) {
-      log("No enabled sources found. Stopping.")
-      stats.duration_ms = Date.now() - start
-      return stats
-    }
-    log(`Found ${sources.length} enabled source${sources.length === 1 ? "" : "s"}`)
-
-    // Step 2 — resolve article URLs from each source
-    log("Step 2/9 — Resolving article URLs")
-    const cutoff = new Date(Date.now() - THREE_DAYS_MS)
-    const allItems: { url: string; pubDate: Date | null; sourceId: string; sourceName: string }[] =
-      []
-
-    const sourceResults = await runWithConcurrencyLimit(sources, 5, async (source) => {
-      log(`Source: ${source.name ?? source.url}`)
-      try {
-        const items = await resolveSourceUrls(source, log)
-        let tooOld = 0
-        const keptItems: {
-          url: string
-          pubDate: Date | null
-          sourceId: string
-          sourceName: string
-        }[] = []
-        for (const item of items) {
-          if (item.pubDate && item.pubDate < cutoff) {
-            tooOld++
-            continue
-          }
-          keptItems.push({ ...item, sourceId: source.id, sourceName: source.name })
-        }
-        log(
-          `  ${source.name}: ${items.length} items (${tooOld} too old, ${items.length - tooOld} kept)`
-        )
-        return { keptItems, tooOld }
-      } catch (e) {
-        log(`  Error resolving ${source.name ?? source.url}: ${(e as Error).message}`)
-        return { keptItems: [], tooOld: 0 }
-      }
-    })
-
-    for (const res of sourceResults) {
-      allItems.push(...res.keptItems)
-      stats.too_old += res.tooOld
-    }
-
-    // deduplicate URLs across sources
-    const seen = new Set<string>()
-    const uniqueItems = allItems.filter(({ url }) => {
-      if (seen.has(url)) return false
-      seen.add(url)
-      return true
-    })
-
-    stats.urls_found = uniqueItems.length
-    log(`${stats.urls_found} unique URLs (${stats.too_old} filtered as too old)`)
-
-    // Step 3 — dedup against Firestore
-    log("Step 3/9 — Deduplicating against existing articles")
-    const hashes = uniqueItems.map(({ url }) => sha256(url))
-    const refs = hashes.map((h) => db.collection("articles").doc(h))
-    const BATCH_SIZE = 500
-    const snapBatches = await Promise.all(
-      Array.from({ length: Math.ceil(refs.length / BATCH_SIZE) }, (_, i) =>
-        db.getAll(...refs.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE))
-      )
-    )
-    const snaps = snapBatches.flat()
-    const newItems = uniqueItems.filter((_, i) => !snaps[i].exists)
-    log(
-      `${newItems.length} new URLs to scrape (${uniqueItems.length - newItems.length} already ingested)`
-    )
-
-    // Step 4 — scrape articles
-    log("Step 4/9 — Scraping articles")
-
-    // Group newItems by domain to parallelize across domains while keeping same-domain scrapings sequential
-    const itemsByDomain: Record<string, typeof newItems> = {}
-    for (const item of newItems) {
-      const domain = hostname(item.url)
-      if (!itemsByDomain[domain]) {
-        itemsByDomain[domain] = []
-      }
-      itemsByDomain[domain].push(item)
-    }
-
-    const domains = Object.keys(itemsByDomain)
-    const MAX_CONCURRENT_DOMAINS = 5
-    const domainLastFetch: Record<string, number> = {}
-    const rawArticleIds: string[] = []
-
-    await runWithConcurrencyLimit(domains, MAX_CONCURRENT_DOMAINS, async (domain) => {
-      const items = itemsByDomain[domain]
-      log(`Starting queue for domain ${domain} (${items.length} items)`)
-
-      for (const { url, pubDate: feedPubDate, sourceId, sourceName } of items) {
-        const last = domainLastFetch[domain]
-        if (last && Date.now() - last < DOMAIN_DELAY_MS) {
-          await sleep(DOMAIN_DELAY_MS - (Date.now() - last))
-        }
-        domainLastFetch[domain] = Date.now()
-
-        const hash = sha256(url)
-
-        try {
-          log(`  Scraping [${domain}]: ${url}`)
-          const scraped = await fetchArticle(url)
-
-          // post-scrape date filter for page-sourced items (no feedPubDate)
-          if (!feedPubDate && scraped.pubDate && scraped.pubDate < cutoff) {
-            log(`  Too old [${domain}]: ${url}`)
-            stats.too_old++
-            continue
-          }
-
-          // Firecrawl fallback for JS-rendered pages (skip for Reddit — low count is expected for image posts)
-          let bodyMd = scraped.markdown
-          if (
-            scraped.wordCount < 50 &&
-            process.env.FIRECRAWL_API_KEY &&
-            !domain.includes("reddit.com")
-          ) {
-            log(`  Low word count [${domain}] — trying Firecrawl fallback`)
-            const fc = await firecrawlFetch(url)
-            if (fc) bodyMd = fc
-          }
-
-          if (!bodyMd) {
-            log(`  No content extracted [${domain}] — marking as fetch_failed`)
-            await writeFailedArticle(hash, url, domain, sourceId, sourceName)
-            continue
-          }
-
-          const pubDate = feedPubDate ?? scraped.pubDate ?? null
-          const id = await saveRawArticle({
-            url,
-            urlHash: hash,
-            title: scraped.title,
-            domain,
-            sourceId,
-            sourceName,
-            bodyMd: bodyMd.slice(0, MAX_BODY_CHARS),
-            excerpt: scraped.excerpt.slice(0, 500),
-            pubDate,
-          })
-          rawArticleIds.push(id)
-          stats.new_articles++
-          log(`  Saved: "${scraped.title || url}"`)
-        } catch (e) {
-          if (
-            e instanceof HttpError &&
-            (e.status === 403 || e.status === 429) &&
-            !domain.includes("reddit.com")
-          ) {
-            log(`  HTTP ${e.status} [${domain}] — trying CloakBrowser fallback`)
-            let fallbackMd = await cloakbrowserFetch(url)
-            let fallbackSource = "CloakBrowser"
-
-            if (!fallbackMd && process.env.FIRECRAWL_API_KEY) {
-              log(`  CloakBrowser failed [${domain}] — trying Firecrawl fallback`)
-              fallbackMd = await firecrawlFetch(url)
-              fallbackSource = "Firecrawl"
-            }
-
-            if (fallbackMd) {
-              const id = await saveRawArticle({
-                url,
-                urlHash: hash,
-                title: "",
-                domain,
-                sourceId,
-                sourceName,
-                bodyMd: fallbackMd.slice(0, MAX_BODY_CHARS),
-                excerpt: fallbackMd.slice(0, 500),
-                pubDate: feedPubDate ?? null,
-              })
-              rawArticleIds.push(id)
-              stats.new_articles++
-              log(`  Saved via ${fallbackSource}: ${url}`)
-            } else {
-              log(`  All fallbacks failed [${domain}] — will retry next run: ${url}`)
-            }
-          } else if (e instanceof HttpError && e.status >= 500) {
-            log(`  HTTP ${e.status} [${domain}] — will retry next run: ${url}`)
-          } else if (e instanceof HttpError) {
-            log(`  HTTP ${e.status} [${domain}] — marking as failed: ${url}`)
-            await writeFailedArticle(hash, url, domain, sourceId, sourceName)
-          } else {
-            log(`  Error scraping ${url} [${domain}]: ${(e as Error).message}`)
-            await writeFailedArticle(hash, url, domain, sourceId, sourceName)
-          }
-        }
-      }
-    })
-
-    log(`Scraped ${stats.new_articles} article${stats.new_articles === 1 ? "" : "s"}`)
-
-    await runAiPipeline(rawArticleIds, stats, log)
-
-    stats.duration_ms = Date.now() - start
-    return stats
-  } finally {
-    await releaseIngestLock()
-  }
-}
-
-async function saveRawArticle(fields: {
-  url: string
-  urlHash: string
-  title: string
-  domain: string
-  sourceId: string
-  sourceName: string
-  bodyMd: string
-  excerpt: string
-  pubDate: Date | null
-}): Promise<string> {
-  const { urlHash, ...rest } = fields
-  await db
-    .collection("articles")
-    .doc(urlHash)
-    .set({
-      ...rest,
-      relevanceScore: 0,
-      embedding: [],
-      status: "raw",
-      ingestedAt: FieldValue.serverTimestamp(),
-      expireAt: getTtlExpirationDate(),
-    })
-  return urlHash
-}
-
-async function writeFailedArticle(
-  urlHash: string,
-  url: string,
-  domain: string,
-  sourceId: string,
-  sourceName: string
-) {
-  await db.collection("articles").doc(urlHash).set({
-    url,
-    title: "",
-    domain,
-    sourceId,
-    sourceName,
-    bodyMd: "",
-    excerpt: "",
-    relevanceScore: 0,
-    embedding: [],
-    status: "fetch_failed",
-    ingestedAt: FieldValue.serverTimestamp(),
-    expireAt: getTtlExpirationDate(),
-  })
-}
-
-async function cloakbrowserFetch(url: string): Promise<string | null> {
-  try {
-    const { launch } = await import("cloakbrowser")
-    const { Readability } = await import("@mozilla/readability")
-    const { JSDOM, VirtualConsole } = await import("jsdom")
-    const { default: TurndownService } = await import("turndown")
-
-    const browser = await launch({ headless: true })
-    let html: string
-    try {
-      const page = await browser.newPage()
-      await page.goto(url, { waitUntil: "domcontentloaded" })
-      html = await page.content()
-    } finally {
-      await browser.close()
-    }
-
-    const virtualConsole = new VirtualConsole()
-    let doc: JSDOM
-    try {
-      doc = new JSDOM(html, { url, virtualConsole })
-    } catch {
-      doc = new JSDOM(html, { virtualConsole })
-    }
-
-    const article = new Readability(doc.window.document).parse()
-    if (!article?.content) return null
-
-    const td = new TurndownService({ headingStyle: "atx" })
-    return `# ${article.title}\n\n${td.turndown(article.content)}`
-  } catch {
-    return null
-  }
-}
-
-async function firecrawlFetch(url: string): Promise<string | null> {
-  try {
-    const res = await fetch("https://api.firecrawl.dev/v1/scrape", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.FIRECRAWL_API_KEY}`,
-      },
-      body: JSON.stringify({ url, formats: ["markdown"] }),
-    })
-    if (!res.ok) return null
-    const data = await res.json()
-    return data.data?.markdown ?? null
-  } catch {
-    return null
-  }
-}
-
-// ─── AI pipeline (steps 5–9) ──────────────────────────────────────────────────
-
-async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg: string) => void) {
-  // Pick up stuck articles from previous failed runs
-  const [stuckRawSnap, stuckScoredSnap] = await Promise.all([
-    db.collection("articles").where("status", "==", "raw").get(),
-    db.collection("articles").where("status", "==", "scored").get(),
-  ])
-
-  const stuckRawIds = stuckRawSnap.docs.map((d) => d.id).filter((id) => !articleIds.includes(id))
-
-  const allRawIds = [...articleIds, ...stuckRawIds]
-  const stuckScoredIds = stuckScoredSnap.docs.map((d) => d.id)
-
-  if (stuckRawIds.length > 0)
-    log(`Recovered ${stuckRawIds.length} stuck raw article(s) from previous runs`)
-  if (stuckScoredIds.length > 0)
-    log(`Recovered ${stuckScoredIds.length} stuck scored article(s) from previous runs`)
-
-  if (allRawIds.length === 0 && stuckScoredIds.length === 0) {
-    log("No new articles to process through AI scoring or clustering")
-  } else {
-    // Step 5 — relevance scoring in batches of 10
-    log("Step 5/9 — Scoring relevance")
-    const BATCH = 10
-    const scoredIds: string[] = [...stuckScoredIds]
-
-    for (let i = 0; i < allRawIds.length; i += BATCH) {
-      const batch = allRawIds.slice(i, i + BATCH)
-      const docs = await Promise.all(batch.map((id) => db.collection("articles").doc(id).get()))
-
-      await Promise.all(
-        docs.map(async (doc) => {
-          if (!doc.exists) return
-          const data = doc.data()!
-          const score = await scoreRelevance(data.title, data.excerpt)
-          if (score === null) {
-            log(`  Score failed for "${data.title}" — left as raw, will retry next ingestion`)
-          } else if (score < 5) {
-            await doc.ref.update({ status: "discarded", relevanceScore: score })
-            stats.discarded++
-            log(`  Discarded (score ${score}/10): "${data.title}"`)
-          } else {
-            await doc.ref.update({ status: "scored", relevanceScore: score })
-            scoredIds.push(doc.id)
-            log(`  Relevant (score ${score}/10): "${data.title}"`)
-          }
-        })
-      )
-    }
-    log(`Scoring done: ${scoredIds.length} relevant, ${stats.discarded} discarded`)
-
-    // Step 6 — embeddings
-    log("Step 6/9 — Generating embeddings")
-    const articlesWithEmbedding: ArticleWithEmbedding[] = []
-
-    await runWithConcurrencyLimit(scoredIds, 10, async (id) => {
-      const doc = await db.collection("articles").doc(id).get()
-      if (!doc.exists) return
-      const data = doc.data()!
-      try {
-        const embedding = await embed(`${data.title}\n\n${data.excerpt}`)
-        await doc.ref.update({ embedding })
-        articlesWithEmbedding.push({
-          id,
-          title: data.title,
-          url: data.url,
-          domain: data.domain,
-          sourceId: data.sourceId ?? "",
-          sourceName: data.sourceName ?? "",
-          excerpt: data.excerpt,
-          bodyMd: data.bodyMd,
-          relevanceScore: data.relevanceScore,
-          embedding,
-          pubDate: data.pubDate?.toDate?.() ?? null,
-        })
-        log(`  Embedded: "${data.title}"`)
-      } catch (e) {
-        log(`  Embedding failed for "${data.title}": ${(e as Error).message}`)
-      }
-    })
-    log(`Embedded ${articlesWithEmbedding.length} articles`)
-
-    // Step 7 — cluster (cross-run: check new articles against recent existing clusters first)
-    log("Step 7/9 — Clustering")
-    const recentClusters = await getRecentClusterCentroids(3)
-    log(`Loaded ${recentClusters.length} recent cluster centroids`)
-
-    const existingForClustering: ExistingCluster[] = recentClusters.map((c) => ({
-      id: c.id,
-      centroid: c.centroid,
-      articles: c.articles.map((a) => ({
-        ...a,
-        embedding: [],
-      })),
-    }))
-
-    const newArticleIds = new Set(articlesWithEmbedding.map((a) => a.id))
-
-    const { newClusters, updatedClusters, alreadyClustered } = clusterWithExisting(
-      articlesWithEmbedding,
-      existingForClustering
-    )
-
-    stats.clustered = articlesWithEmbedding.length
-    stats.clusters_created = newClusters.length
-    const singletons = newClusters.filter((c) => c.isSingleton).length
-    log(
-      `${newClusters.length} new clusters (${singletons} singletons), ${updatedClusters.length} existing clusters updated`
-    )
-    if (alreadyClustered.length > 0)
-      log(`${alreadyClustered.length} article(s) already in existing clusters — fixing status`)
-
-    // Step 8 — summarise new clusters and update existing ones
-    log("Step 8/9 — Summarising and writing clusters")
-
-    // Fix status for articles already present in existing clusters (stuck from a crashed prior run)
-    await Promise.all(
-      alreadyClustered
-        .filter((a) => newArticleIds.has(a.id))
-        .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
-    )
-
-    // Update existing clusters that gained new articles
-    await Promise.all(
-      updatedClusters.map(async (updated) => {
-        const allArticles = updated.articles.map(toClusterArticle)
-        await updateCluster(updated.id, allArticles, updated.centroid)
-        await Promise.all(
-          updated.articles
-            .filter((a) => newArticleIds.has(a.id))
-            .map((a) => db.collection("articles").doc(a.id).update({ status: "clustered" }))
-        )
-        log(`  Updated existing cluster with ${updated.articles.length} total articles`)
-      })
-    )
-
-    // Write new clusters
-    await runWithConcurrencyLimit(newClusters, 5, async (cluster) => {
-      const clusterArticlesData = cluster.articles.map(toClusterArticle)
-
-      let summary = clusterArticlesData[0].excerpt
-      let topicTag: TopicTag = "other"
-      let sentiment: Sentiment = "neutral"
-      let entities: string[] = []
-      let importanceScore = 5
-
-      let keyTakeaways: string[] = []
-      let whyItMatters = ""
-
-      log(
-        `  Summarising cluster: "${cluster.articles[0].title}"${
-          cluster.isSingleton ? " (singleton)" : ` + ${cluster.articles.length - 1} more`
-        }`
-      )
-      try {
-        const result = await summariseCluster(cluster.articles)
-        summary = result.summary
-        topicTag = result.topicTag
-        sentiment = result.sentiment
-        entities = result.entities
-        importanceScore = result.importanceScore
-        keyTakeaways = result.keyTakeaways
-        whyItMatters = result.whyItMatters
-      } catch (e) {
-        log(`  Summarising cluster failed, using default: ${(e as Error).message}`)
-      }
-
-      const publishedAt = cluster.articles.find((a) => a.pubDate)?.pubDate ?? new Date()
-
-      const categories = Array.from(
-        new Set(
-          clusterArticlesData
-            .map((a) => a.sourceCategory)
-            .filter((c): c is SourceCategory => Boolean(c))
-        )
-      )
-      const primaryCategory = categories[0] ?? "industry-news"
-
-      await db.collection("clusters").add({
-        summary,
-        topicTag,
-        categories,
-        primaryCategory,
-        sentiment,
-        entities,
-        importanceScore,
-        keyTakeaways,
-        whyItMatters,
-        isSingleton: cluster.isSingleton,
-        articles: clusterArticlesData,
-        centroid: cluster.centroid,
-        articleCount: cluster.articles.length,
-        publishedAt,
-        createdAt: FieldValue.serverTimestamp(),
-        expireAt: getTtlExpirationDate(),
-      })
-
-      await Promise.all(
-        cluster.articles.map((a) =>
-          db.collection("articles").doc(a.id).update({ status: "clustered" })
-        )
-      )
-    })
-
-    log(
-      `Written ${newClusters.length} new cluster${newClusters.length === 1 ? "" : "s"}, updated ${updatedClusters.length} existing`
-    )
-  }
-
-  log("Step 9/9 — Generating digests")
-  try {
-    await generateAndSaveDigest(log)
-    await checkAndRefreshMultiScopeDigests(log)
-  } catch (e) {
-    log(`Digest generation failed (non-fatal): ${(e as Error).message}`)
-  }
+export async function seedAllDigests(log: (msg: string) => void = console.log): Promise<void> {
+  log("Seeding all digests...")
+  await generateAndSaveDigest(log, "daily")
+  await generateWeeklyDigest(log)
+  await generateMonthlyDigest(log)
+  await generateAllTimeOverview(log)
+  log("All digests seeded successfully.")
 }
 
 export async function checkAndRefreshMultiScopeDigests(
   log: (msg: string) => void = console.log
 ): Promise<void> {
-  const now = new Date()
-
-  // 1. Check Weekly Digest staleness (due if missing or >= 7 days old)
-  try {
-    const weekly = await getLatestDigest("weekly")
-    const isWeeklyDue =
-      !weekly || now.getTime() - weekly.generatedAt.getTime() >= 7 * 24 * 60 * 60 * 1000
-    if (isWeeklyDue) {
-      log("  Weekly digest is due — generating weekly digest & updating field overview")
-      await generateWeeklyDigest(log)
-      await generateAllTimeOverview(log)
-    }
-  } catch (err) {
-    log(`  Weekly digest check/generation error: ${(err as Error).message}`)
-  }
-
-  // 2. Check Monthly Digest staleness (due if missing or >= 30 days old)
-  try {
-    const monthly = await getLatestDigest("monthly")
-    const isMonthlyDue =
-      !monthly || now.getTime() - monthly.generatedAt.getTime() >= 30 * 24 * 60 * 60 * 1000
-    if (isMonthlyDue) {
-      log("  Monthly digest is due — generating monthly digest")
-      await generateMonthlyDigest(log)
-    }
-  } catch (err) {
-    log(`  Monthly digest check/generation error: ${(err as Error).message}`)
-  }
+  log("Checking multi-scope digests status...")
+  await generateAndSaveDigest(log, "daily")
 }
 
 export function computeClusterImpactScore(c: Cluster): number {
-  const importance = c.importanceScore ?? 5
-  const avgRelevance =
-    c.articles.length > 0
-      ? c.articles.reduce((acc: number, a: ClusterArticle) => acc + (a.relevanceScore ?? 5), 0) /
-        c.articles.length
-      : 5
-  const volumeScore = Math.log2((c.articleCount || c.articles.length || 1) + 1)
-  return importance * 0.6 + avgRelevance * 0.3 + volumeScore * 0.1
+  const generator = new DigestGenerator({
+    clusterRepository: { getClustersForScope: async () => [] },
+    synthesizer: { synthesizeDigest: async () => ({}) as Digest },
+    digestRepository: { saveDigest: async () => {} },
+  })
+  return generator.computeClusterImpactScore(c)
 }
 
 export function rankClustersByImportance(clusters: Cluster[]): Cluster[] {
-  return [...clusters].sort((a, b) => computeClusterImpactScore(b) - computeClusterImpactScore(a))
+  const generator = new DigestGenerator({
+    clusterRepository: { getClustersForScope: async () => [] },
+    synthesizer: { synthesizeDigest: async () => ({}) as Digest },
+    digestRepository: { saveDigest: async () => {} },
+  })
+  return generator.rankClustersByImportance(clusters)
 }
 
 export function filterClustersByCategory(clusters: Cluster[], category: SourceCategory): Cluster[] {
-  return clusters.filter((cluster) => {
-    if (cluster.categories && cluster.categories.includes(category)) return true
-    if (cluster.primaryCategory === category) return true
-    if (cluster.articles?.some((a) => a.sourceCategory === category)) return true
-
-    // Fallback for legacy clusters based on topicTag
-    if (category === "frontier-research" && cluster.topicTag === "research") return true
-    if (
-      category === "ai-engineering" &&
-      (cluster.topicTag === "agents" || cluster.topicTag === "product")
-    )
-      return true
-    if (
-      category === "ecosystem-analysis" &&
-      (cluster.topicTag === "opinion" || cluster.topicTag === "education")
-    )
-      return true
-    if (
-      category === "industry-news" &&
-      (cluster.topicTag === "model-release" ||
-        cluster.topicTag === "funding" ||
-        cluster.topicTag === "policy" ||
-        cluster.topicTag === "industry")
-    )
-      return true
-
-    return false
+  const generator = new DigestGenerator({
+    clusterRepository: { getClustersForScope: async () => [] },
+    synthesizer: { synthesizeDigest: async () => ({}) as Digest },
+    digestRepository: { saveDigest: async () => {} },
   })
-}
-
-async function generateDigestFromClusters(
-  clusters: Cluster[],
-  scope: DigestScope = "daily",
-  timeframeLabel = "the last 3 days",
-  log: (msg: string) => void = console.log,
-  category: SourceCategory | "all" = "all"
-): Promise<void> {
-  const now = new Date()
-  if (clusters.length === 0) return
-
-  interface IndexedArticle {
-    index: number
-    title: string
-    url: string
-    domain: string
-    sourceName?: string
-  }
-
-  const indexedArticles: IndexedArticle[] = []
-  let articleCounter = 1
-
-  const clusterLines = clusters
-    .slice(0, 60)
-    .map((c) => {
-      const articleLines = c.articles
-        .map((a) => {
-          const idx = articleCounter++
-          indexedArticles.push({
-            index: idx,
-            title: a.title || a.url,
-            url: a.url,
-            domain: a.domain,
-            sourceName: a.sourceName,
-          })
-          return `    - [Article ${idx}] "${a.title || a.url}" (Source: ${a.sourceName || a.domain})`
-        })
-        .join("\n")
-
-      const entities = c.entities.length > 0 ? ` [${c.entities.slice(0, 4).join(", ")}]` : ""
-      return `Story: [${c.topicTag}]${entities} ${c.summary}\n  Articles:\n${articleLines}`
-    })
-    .join("\n\n")
-
-  const categoryContext =
-    category !== "all"
-      ? ` focusing specifically on the "${category}" domain (engineering, research, ecosystem, or industry news)`
-      : ""
-
-  const prompt = `You are an AI news analyst${categoryContext}. Based on the following AI news stories from ${timeframeLabel}, write a concise digest for a technically sophisticated audience.
-
-NEWS STORIES:
-${clusterLines}
-
-Return a JSON object with exactly this shape:
-{
-  "headline": "A single punchy sentence capturing the most important theme or shift in ${timeframeLabel}",
-  "insights": [
-    {
-      "text": "Insight 1 — a specific, non-obvious observation about a trend, pattern, or implication",
-      "articleIndices": [1, 2]
-    }
-  ]
-}
-
-Rules:
-- 3 to 5 insights, each 1-2 sentences
-- Be analytical and specific, not generic ("AI is advancing quickly" is not an insight)
-- Ground each insight by setting "articleIndices" to the exact [Article N] numbers (e.g. [1, 3]) for the articles supporting that insight
-- Highlight tensions, surprises, patterns, or implications a busy reader might miss`
-
-  const response = await getAi().models.generateContent({
-    model: INGEST_MODEL,
-    contents: prompt,
-    config: { responseMimeType: "application/json" },
-  })
-
-  const parsed = JSON.parse(response.text ?? "{}")
-  const headline = typeof parsed.headline === "string" ? parsed.headline : ""
-
-  const articleMap = new Map<number, IndexedArticle>()
-  for (const item of indexedArticles) {
-    articleMap.set(item.index, item)
-  }
-
-  const insights: GroundedInsight[] = []
-  if (Array.isArray(parsed.insights)) {
-    for (const item of parsed.insights) {
-      if (typeof item === "string") {
-        insights.push({
-          text: item,
-          category: category !== "all" ? category : undefined,
-          sources: [],
-        })
-      } else if (item && typeof item === "object" && typeof item.text === "string") {
-        const rawIndices: number[] = Array.isArray(item.articleIndices)
-          ? item.articleIndices.filter((n: unknown): n is number => typeof n === "number")
-          : []
-
-        const sources: DigestSource[] = []
-        const seenUrls = new Set<string>()
-
-        for (const idx of rawIndices) {
-          const matched = articleMap.get(idx)
-          if (matched && !seenUrls.has(matched.url)) {
-            seenUrls.add(matched.url)
-            sources.push({
-              title: matched.title,
-              url: matched.url,
-              domain: matched.domain,
-              sourceName: matched.sourceName,
-            })
-          }
-        }
-
-        insights.push({
-          text: item.text,
-          category: category !== "all" ? category : undefined,
-          sources,
-        })
-      }
-    }
-  }
-
-  await saveDigest({ headline, insights, generatedAt: now, category }, scope, category)
-  log(`  Digest (${scope}, category: ${category}) saved: "${headline.slice(0, 60)}…"`)
-}
-
-export async function generateAndSaveDigest(
-  log: (msg: string) => void = console.log
-): Promise<void> {
-  const now = new Date()
-  const start = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000)
-  const clusters = await getClustersByDateRange(start, now)
-
-  if (clusters.length === 0) {
-    log("  No clusters for daily digest — skipping")
-    return
-  }
-
-  // 1. General Cross-Category Digest
-  await generateDigestFromClusters(clusters, "daily", "the last 3 days", log, "all")
-
-  // 2. Category-Specific Digests
-  const categories: SourceCategory[] = [
-    "ai-engineering",
-    "frontier-research",
-    "ecosystem-analysis",
-    "industry-news",
-  ]
-  for (const cat of categories) {
-    const catClusters = filterClustersByCategory(clusters, cat)
-    if (catClusters.length > 0) {
-      await generateDigestFromClusters(catClusters, "daily", "the last 3 days", log, cat)
-    }
-  }
-}
-
-export async function generateWeeklyDigest(
-  log: (msg: string) => void = console.log
-): Promise<void> {
-  const now = new Date()
-  const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  const rawClusters = await getClustersByDateRange(start, now)
-
-  if (rawClusters.length === 0) {
-    log("  No clusters for weekly digest — skipping")
-    return
-  }
-
-  const sortedClusters = rankClustersByImportance(rawClusters).slice(0, 30)
-
-  // General Cross-Category Digest
-  await generateDigestFromClusters(sortedClusters, "weekly", "the last 7 days", log, "all")
-
-  // Category-Specific Digests
-  const categories: SourceCategory[] = [
-    "ai-engineering",
-    "frontier-research",
-    "ecosystem-analysis",
-    "industry-news",
-  ]
-  for (const cat of categories) {
-    const catClusters = filterClustersByCategory(sortedClusters, cat)
-    if (catClusters.length > 0) {
-      await generateDigestFromClusters(catClusters, "weekly", "the last 7 days", log, cat)
-    }
-  }
-}
-
-export async function generateMonthlyDigest(
-  log: (msg: string) => void = console.log,
-  _isColdStart = false
-): Promise<void> {
-  const now = new Date()
-  const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-  const rawClusters = await getClustersByDateRange(start, now)
-
-  const clustersToUse = rawClusters.length > 0 ? rawClusters : await getClusters(200)
-  const sortedClusters = rankClustersByImportance(clustersToUse).slice(0, 40)
-
-  if (sortedClusters.length === 0) {
-    log("  No clusters for monthly digest — skipping")
-    return
-  }
-
-  // General Cross-Category Digest
-  await generateDigestFromClusters(sortedClusters, "monthly", "the past 30 days", log, "all")
-
-  // Category-Specific Digests
-  const categories: SourceCategory[] = [
-    "ai-engineering",
-    "frontier-research",
-    "ecosystem-analysis",
-    "industry-news",
-  ]
-  for (const cat of categories) {
-    const catClusters = filterClustersByCategory(sortedClusters, cat)
-    if (catClusters.length > 0) {
-      await generateDigestFromClusters(catClusters, "monthly", "the past 30 days", log, cat)
-    }
-  }
-}
-
-export async function generateAllTimeOverview(
-  log: (msg: string) => void = console.log,
-  isColdStart = false
-): Promise<void> {
-  const now = new Date()
-  const existingOverview = await getLatestDigest("overview")
-
-  if (isColdStart || !existingOverview) {
-    const allClusters = await getClusters(300)
-    if (allClusters.length === 0) {
-      log("  No clusters found for All-Time Overview — skipping")
-      return
-    }
-    const topClusters = rankClustersByImportance(allClusters).slice(0, 50)
-    const clusterSummaries = topClusters
-      .map((c, i) => `${i + 1}. [${c.topicTag}] ${c.summary} (Sources: ${c.articleCount})`)
-      .join("\n")
-
-    const prompt = `You are a chief AI analyst. Synthesize a comprehensive "State of AI Field Overview" representing major breakthroughs, architectural paradigm shifts, frontier model releases, regulatory milestones, and industry trends based on the top stories recorded since inception.
-
-STORIES SUMMARY:
-${clusterSummaries}
-
-Return JSON:
-{
-  "headline": "State of AI: Macro Overview of Recent Breakthroughs and Paradigm Shifts",
-  "insights": [
-    {
-      "text": "Major Trend / Paradigm 1 — deep analytical breakdown of shift and key implications",
-      "articleIndices": [1, 2]
-    }
-  ]
-}`
-
-    const response = await getAi().models.generateContent({
-      model: INGEST_MODEL,
-      contents: prompt,
-      config: { responseMimeType: "application/json" },
-    })
-
-    const parsed = JSON.parse(response.text ?? "{}")
-    const headline =
-      typeof parsed.headline === "string" && parsed.headline.trim().length > 0
-        ? parsed.headline
-        : "State of AI: Field Overview"
-    const insights: GroundedInsight[] = Array.isArray(parsed.insights)
-      ? parsed.insights.map((item: { text?: string } | string) => ({
-          text: typeof item === "string" ? item : (item.text ?? ""),
-          sources: [],
-        }))
-      : []
-
-    await saveDigest({ headline, insights, generatedAt: now }, "overview")
-    log(`  All-Time Field Overview baseline seeded: "${headline.slice(0, 60)}…"`)
-  } else {
-    const weekly = await getLatestDigest("weekly")
-    const weeklyContext = weekly
-      ? weekly.insights
-          .map((i: string | GroundedInsight) => (typeof i === "string" ? i : i.text))
-          .join("\n")
-      : ""
-
-    const prompt = `You are a chief AI analyst updating the ongoing "State of AI Field Overview".
-
-CURRENT ALL-TIME FIELD OVERVIEW HEADLINE:
-${existingOverview.headline}
-
-CURRENT INSIGHTS:
-${existingOverview.insights.map((i: string | GroundedInsight) => (typeof i === "string" ? i : i.text)).join("\n")}
-
-THIS WEEK'S NEW DIGEST HIGHLIGHTS:
-${weeklyContext}
-
-Update and refine the Field Overview to incorporate new major developments, shifting trends, or emerging paradigms from this week while preserving overall historical context.
-
-Return JSON:
-{
-  "headline": "Updated State of AI Macro Overview",
-  "insights": [
-    {
-      "text": "Refined Insight 1",
-      "articleIndices": []
-    }
-  ]
-}`
-
-    const response = await getAi().models.generateContent({
-      model: INGEST_MODEL,
-      contents: prompt,
-      config: { responseMimeType: "application/json" },
-    })
-
-    const parsed = JSON.parse(response.text ?? "{}")
-    const headline =
-      typeof parsed.headline === "string" && parsed.headline.trim().length > 0
-        ? parsed.headline
-        : existingOverview.headline
-    const insights: GroundedInsight[] = Array.isArray(parsed.insights)
-      ? parsed.insights.map((item: { text?: string } | string) => ({
-          text: typeof item === "string" ? item : (item.text ?? ""),
-          sources: [],
-        }))
-      : existingOverview.insights.map((i: string | GroundedInsight) =>
-          typeof i === "string" ? { text: i, sources: [] } : i
-        )
-
-    await saveDigest({ headline, insights, generatedAt: now }, "overview")
-    log(`  All-Time Field Overview updated: "${headline.slice(0, 60)}…"`)
-  }
-
-  // Category-Specific Overview Digests
-  const categories: SourceCategory[] = [
-    "ai-engineering",
-    "frontier-research",
-    "ecosystem-analysis",
-    "industry-news",
-  ]
-  const allClusters = await getClusters(300)
-  for (const cat of categories) {
-    const catClusters = filterClustersByCategory(allClusters, cat)
-    if (catClusters.length > 0) {
-      await generateDigestFromClusters(catClusters, "overview", "all recorded history", log, cat)
-    }
-  }
-}
-
-export async function seedAllDigests(log: (msg: string) => void = console.log): Promise<void> {
-  log("Starting Cold Start Digest Seeding for all 4 scopes...")
-  log("[1/4] Generating Daily Digest...")
-  await generateAndSaveDigest(log)
-  log("[2/4] Generating Weekly Digest...")
-  await generateWeeklyDigest(log)
-  log("[3/4] Generating Monthly Digest (Cold Start)...")
-  await generateMonthlyDigest(log, true)
-  log("[4/4] Generating All-Time Field Overview (Cold Start)...")
-  await generateAllTimeOverview(log, true)
-  log("Cold Start Digest Seeding Complete!")
-}
-
-async function scoreRelevance(title: string, excerpt: string): Promise<number | null> {
-  const prompt = `Score the relevance of this article to the topic of AI/machine learning (0–10).
-Output only a JSON object: { "score": <number> }
-Article title: ${title}
-Excerpt: ${excerpt}`
-
-  try {
-    const response = await getAi().models.generateContent({
-      model: INGEST_MODEL,
-      contents: prompt,
-      config: { responseMimeType: "application/json" },
-    })
-    const parsed = JSON.parse(response.text ?? '{"score":0}')
-    const score = Number(parsed.score)
-    return isNaN(score) ? 0 : Math.min(10, Math.max(0, score))
-  } catch {
-    return null
-  }
-}
-
-interface SummaryResult {
-  summary: string
-  keyTakeaways: string[]
-  whyItMatters: string
-  topicTag: TopicTag
-  sentiment: Sentiment
-  entities: string[]
-  importanceScore: number
-}
-
-async function summariseCluster(articles: ArticleWithEmbedding[]): Promise<SummaryResult> {
-  const articleList = articles
-    .map((a, i) => `${i + 1}. ${a.title}\n${a.bodyMd ? a.bodyMd.slice(0, 15000) : a.excerpt}`)
-    .join("\n\n")
-
-  const prompt = `You are an expert AI news analyst. Given these ${articles.length} articles on a related AI topic, write:
-1. A 2–3 sentence executive summary explaining what happened and why it matters.
-2. 3–4 concise key takeaway bullet points highlighting essential technical or industry facts.
-3. A 1–2 sentence "whyItMatters" explanation of the long-term impact or industry significance.
-4. The most relevant topic tag (one of: model-release, research, funding, product, policy, industry, agents, hardware, opinion, education, other).
-5. Overall sentiment (positive / neutral / negative).
-6. Up to 5 named entities (companies, people, models).
-7. An industry importance score from 1 to 10 (10 = landmark open-weights release, major architectural breakthrough, or historical regulation; 1 = minor app patch or opinion post).
-
-Output JSON:
-{
-  "summary": "...",
-  "keyTakeaways": ["...", "..."],
-  "whyItMatters": "...",
-  "topicTag": "...",
-  "sentiment": "...",
-  "entities": ["..."],
-  "importanceScore": 7
-}
-
-Articles:
-${articleList}`
-
-  try {
-    const response = await getAi().models.generateContent({
-      model: INGEST_MODEL,
-      contents: prompt,
-      config: { responseMimeType: "application/json" },
-    })
-    const parsed = JSON.parse(response.text ?? "{}")
-    const importanceScore =
-      typeof parsed.importanceScore === "number"
-        ? Math.min(10, Math.max(1, parsed.importanceScore))
-        : 5
-    return {
-      summary: parsed.summary ?? articles[0].excerpt,
-      keyTakeaways: Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways : [],
-      whyItMatters: typeof parsed.whyItMatters === "string" ? parsed.whyItMatters : "",
-      topicTag: (parsed.topicTag as TopicTag) ?? "other",
-      sentiment: (parsed.sentiment as Sentiment) ?? "neutral",
-      entities: Array.isArray(parsed.entities) ? parsed.entities : [],
-      importanceScore,
-    }
-  } catch {
-    return {
-      summary: articles[0].excerpt,
-      keyTakeaways: [],
-      whyItMatters: "",
-      topicTag: "other",
-      sentiment: "neutral",
-      entities: [],
-      importanceScore: 5,
-    }
-  }
+  return generator.filterClustersByCategory(clusters, category)
 }
