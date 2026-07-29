@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import type { Source, SourceType } from "@/lib/types"
+import type { Source, SourceType, SourceCategory } from "@/lib/types"
 import type { IngestStats } from "@/lib/ingest"
 import { isIngestErrorLine } from "@/lib/ingest-log"
 
@@ -19,6 +19,7 @@ interface EditDraft {
   name: string
   url: string
   type: SourceType
+  category: SourceCategory
 }
 
 export default function AdminPage() {
@@ -33,6 +34,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false)
   const urlRef = useRef<HTMLInputElement>(null)
   const nameRef = useRef<HTMLInputElement>(null)
+  const categoryRef = useRef<HTMLSelectElement>(null)
 
   const [ingestState, setIngestState] = useState<IngestState>("idle")
   const [ingestLog, setIngestLog] = useState<string[]>([])
@@ -117,12 +119,13 @@ export default function AdminPage() {
     e.preventDefault()
     const url = urlRef.current?.value.trim() ?? ""
     const name = nameRef.current?.value.trim() || undefined
+    const category = (categoryRef.current?.value as SourceCategory) || "industry-news"
     if (!url) return
     setAdding(true)
     try {
       const r = await apiFetch("/api/sources", {
         method: "POST",
-        body: JSON.stringify({ url, name }),
+        body: JSON.stringify({ url, name, category }),
       })
       if (!r.ok) {
         const errorData = await r.json().catch(() => null)
@@ -154,7 +157,12 @@ export default function AdminPage() {
   function startEdit(source: Source) {
     setEditingId(source.id)
     setDeleteConfirm(null)
-    setEditDraft({ name: source.name ?? "", url: source.url, type: source.type })
+    setEditDraft({
+      name: source.name ?? "",
+      url: source.url,
+      type: source.type,
+      category: source.category ?? "industry-news",
+    })
   }
 
   function cancelEdit() {
@@ -347,21 +355,30 @@ export default function AdminPage() {
           {showAdd && (
             <form
               onSubmit={handleAdd}
-              className="flex gap-2 p-4 border border-border bg-muted/10 animate-slide-down"
+              className="flex flex-wrap gap-2 p-4 border border-border bg-muted/10 animate-slide-down"
             >
               <input
                 ref={urlRef}
                 type="url"
                 required
                 placeholder="https://example.com/feed.xml"
-                className="flex-1 border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-foreground"
+                className="flex-1 min-w-[200px] border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-foreground"
               />
               <input
                 ref={nameRef}
                 type="text"
                 placeholder="Name (auto-detected)"
-                className="w-48 border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-foreground"
+                className="w-44 border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-foreground"
               />
+              <select
+                ref={categoryRef}
+                className="w-44 border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-foreground"
+              >
+                <option value="industry-news">🏢 Industry News</option>
+                <option value="ai-engineering">🛠️ AI Engineering</option>
+                <option value="frontier-research">🧪 Frontier R&D</option>
+                <option value="ecosystem-analysis">📰 Ecosystem Analysis</option>
+              </select>
               <button
                 type="submit"
                 disabled={adding}
@@ -377,7 +394,7 @@ export default function AdminPage() {
               No sources yet. Add a URL above to get started.
             </p>
           ) : (
-            <div className="border border-border">
+            <div className="border border-border overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b border-border bg-muted/10">
@@ -395,19 +412,22 @@ export default function AdminPage() {
                     </th>
                     <th
                       onClick={() => handleSort("type")}
-                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-28 cursor-pointer hover:text-foreground select-none group"
+                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-20 cursor-pointer hover:text-foreground select-none group"
                     >
                       <span className="flex items-center gap-1">Type {renderSortIcon("type")}</span>
                     </th>
+                    <th className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-36 select-none">
+                      Category
+                    </th>
                     <th
                       onClick={() => handleSort("enabled")}
-                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-20 cursor-pointer hover:text-foreground select-none group"
+                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-16 cursor-pointer hover:text-foreground select-none group"
                     >
                       <span className="flex items-center gap-1">
                         On {renderSortIcon("enabled")}
                       </span>
                     </th>
-                    <th className="py-2.5 px-4 w-32"></th>
+                    <th className="py-2.5 px-4 w-28"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -443,6 +463,23 @@ export default function AdminPage() {
                           >
                             <option value="rss">rss</option>
                             <option value="page">page</option>
+                          </select>
+                        </td>
+                        <td className="py-2 px-4">
+                          <select
+                            className={inputCls}
+                            value={editDraft.category ?? "industry-news"}
+                            onChange={(e) =>
+                              setEditDraft({
+                                ...editDraft,
+                                category: e.target.value as SourceCategory,
+                              })
+                            }
+                          >
+                            <option value="industry-news">Industry News</option>
+                            <option value="ai-engineering">AI Engineering</option>
+                            <option value="frontier-research">Frontier R&D</option>
+                            <option value="ecosystem-analysis">Ecosystem Analysis</option>
                           </select>
                         </td>
                         <td className="py-2 px-4" />
@@ -487,6 +524,11 @@ export default function AdminPage() {
                         <td className="py-3 px-4">
                           <span className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground bg-muted/30">
                             {source.type}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="border border-border px-2 py-0.5 font-mono text-[10px] text-muted-foreground bg-muted/20 rounded">
+                            {source.category ?? "industry-news"}
                           </span>
                         </td>
                         <td className="py-3 px-4">

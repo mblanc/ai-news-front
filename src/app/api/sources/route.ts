@@ -30,6 +30,9 @@ export async function GET() {
 const createSchema = z.object({
   url: z.string().url(),
   name: z.string().optional(),
+  category: z
+    .enum(["frontier-research", "ai-engineering", "ecosystem-analysis", "industry-news"])
+    .optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -42,7 +45,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { url, name } = result.data
+  const { url, name, category } = result.data
 
   try {
     assertSafeUrl(url)
@@ -54,6 +57,7 @@ export async function POST(request: NextRequest) {
     url,
     type: detectType(url),
     name: name ?? hostnameFromUrl(url),
+    category: category ?? "industry-news",
     enabled: true,
     createdAt: FieldValue.serverTimestamp(),
   }

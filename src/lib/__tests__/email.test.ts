@@ -79,4 +79,25 @@ describe("Email Digest Rendering", () => {
     expect(text).toContain("No digest available today.")
     expect(text).toContain("No new stories in the past 24 hours.")
   })
+
+  it("handles clusters missing topicTag or articles without throwing", () => {
+    const malformedClusters = [
+      {
+        id: "cluster-incomplete",
+        summary: "Incomplete cluster without topicTag or articles.",
+        sentiment: "neutral",
+        entities: [],
+        isSingleton: true,
+        articleCount: 0,
+        createdAt: new Date(),
+        publishedAt: new Date(),
+      } as unknown as Cluster,
+    ]
+
+    expect(() => renderDigestHtml(sampleDigest, malformedClusters)).not.toThrow()
+    expect(() => renderDigestText(sampleDigest, malformedClusters)).not.toThrow()
+
+    const text = renderDigestText(sampleDigest, malformedClusters)
+    expect(text).toContain("[OTHER] Incomplete cluster without topicTag or articles.")
+  })
 })

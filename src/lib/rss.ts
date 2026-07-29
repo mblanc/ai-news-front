@@ -18,17 +18,49 @@ const BROWSER_HEADERS = {
   "Cache-Control": "no-cache",
 }
 
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms))
+}
+
+let lastRedditFetchTimestamp = 0
+async function redditRateLimit() {
+  const now = Date.now()
+  const elapsed = now - lastRedditFetchTimestamp
+  if (elapsed < 1500) {
+    await sleep(1500 - elapsed)
+  }
+  lastRedditFetchTimestamp = Date.now()
+}
+
 async function fetchFeedXml(feedUrl: string): Promise<string> {
   assertSafeUrl(feedUrl)
   const headers = { ...BROWSER_HEADERS }
   if (isRedditUrl(feedUrl)) {
     headers["User-Agent"] = REDDIT_USER_AGENT
+    await redditRateLimit()
   }
-  const res = await fetch(feedUrl, { headers })
-  if (res.ok) return res.text()
+
+  let res = await fetch(feedUrl, { headers }).catch(() => null)
+
+  // Retry on 429 (Rate Limit) with backoff
+  if (res && res.status === 429) {
+    await sleep(1500)
+    res = await fetch(feedUrl, { headers }).catch(() => null)
+  }
+
+  if (res && res.ok) {
+    const text = await res.text()
+    const trimmed = text.trimStart()
+    if (trimmed.startsWith("<!DOCTYPE html") || trimmed.startsWith("<html")) {
+      throw new Error("Feed URL returned an HTML page instead of valid RSS XML")
+    }
+    return text
+  }
+
+  const status = res?.status ?? "network_error"
 
   // Firecrawl fallback for bot-protected feeds
-  if (process.env.FIRECRAWL_API_KEY && (res.status === 403 || res.status === 429)) {
+  if (process.env.FIRECRAWL_API_KEY && (status === 403 || status === 429)) {
     const fc = await fetch("https://api.firecrawl.dev/v1/scrape", {
       method: "POST",
       headers: {
@@ -36,15 +68,15 @@ async function fetchFeedXml(feedUrl: string): Promise<string> {
         Authorization: `Bearer ${process.env.FIRECRAWL_API_KEY}`,
       },
       body: JSON.stringify({ url: feedUrl, formats: ["rawHtml"] }),
-    })
-    if (fc.ok) {
+    }).catch(() => null)
+    if (fc && fc.ok) {
       const data = await fc.json()
       const html: string = data.data?.rawHtml ?? ""
       if (html) return html
     }
   }
 
-  throw new Error(`Failed to fetch RSS feed: HTTP ${res.status}`)
+  throw new Error(`Failed to fetch RSS feed: HTTP ${status}`)
 }
 
 function parseItems(feed: Parser.Output<Record<string, unknown>>): RssItem[] {

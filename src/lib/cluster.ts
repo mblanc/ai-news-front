@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai"
-import type { ClusterArticle } from "@/lib/types"
+import type { ClusterArticle, SourceCategory } from "@/lib/types"
 
 let aiInstance: GoogleGenAI | null = null
 
@@ -26,6 +26,7 @@ export interface ArticleWithEmbedding {
   domain: string
   sourceId: string
   sourceName: string
+  sourceCategory?: SourceCategory
   excerpt: string
   bodyMd?: string
   relevanceScore: number
@@ -176,6 +177,7 @@ export function toClusterArticle(a: ArticleWithEmbedding): ClusterArticle {
     domain: a.domain,
     sourceId: a.sourceId ?? "",
     sourceName: a.sourceName ?? "",
+    sourceCategory: a.sourceCategory ?? "industry-news",
     excerpt: a.excerpt,
     relevanceScore: a.relevanceScore,
   }

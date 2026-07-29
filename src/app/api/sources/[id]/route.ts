@@ -15,6 +15,9 @@ const patchSchema = z.object({
     .pipe(z.string().url())
     .optional(),
   type: z.enum(["rss", "page"]).optional(),
+  category: z
+    .enum(["frontier-research", "ai-engineering", "ecosystem-analysis", "industry-news"])
+    .optional(),
 })
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

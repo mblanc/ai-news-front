@@ -23,6 +23,7 @@ import {
 } from "@/lib/firebase"
 import type {
   Source,
+  SourceCategory,
   TopicTag,
   Sentiment,
   GroundedInsight,
@@ -154,6 +155,8 @@ async function resolveSourceUrls(
   source: Source,
   log: (msg: string) => void
 ): Promise<{ url: string; pubDate: Date | null }[]> {
+  const sLog = (msg: string) => log(`  [${source.name} | ${source.url}] ${msg}`)
+
   const isRssUrl = (url: string) => {
     const lower = url.toLowerCase()
     return (
@@ -168,13 +171,17 @@ async function resolveSourceUrls(
 
   if (source.type === "rss" || source.feedUrl || isRssUrl(source.url)) {
     const feedUrl = source.feedUrl ?? source.url
-    log(`  RSS feed: ${feedUrl}`)
-    return parseRssFeed(feedUrl)
+    sLog(`RSS feed: ${feedUrl}`)
+    try {
+      return await parseRssFeed(feedUrl)
+    } catch (err) {
+      sLog(`RSS feed failed (${(err as Error).message}) — falling back to page URL extraction`)
+    }
   }
 
   // page source — try RSS autodiscovery first
   assertSafeUrl(source.url)
-  log(`  Fetching page: ${source.url}`)
+  sLog(`Fetching page: ${source.url}`)
   const res = await fetch(source.url, {
     headers: {
       "User-Agent":
@@ -185,15 +192,15 @@ async function resolveSourceUrls(
   if (!res || !res.ok) {
     const status = res?.status ?? "network error"
     if (process.env.FIRECRAWL_API_KEY) {
-      log(`  Failed to fetch page (${status}) — trying Firecrawl`)
+      sLog(`Failed to fetch page (${status}) — trying Firecrawl`)
       const fc = await firecrawlFetch(source.url)
       if (fc) {
         const urls = await extractUrlsWithLlm(fc, source.url)
-        log(`  LLM extracted ${urls.length} URLs via Firecrawl`)
+        sLog(`LLM extracted ${urls.length} URLs via Firecrawl`)
         return urls.map((url) => ({ url, pubDate: null }))
       }
     }
-    log(`  Failed to fetch page (${status})`)
+    sLog(`Failed to fetch page (${status})`)
     return []
   }
 
@@ -201,32 +208,34 @@ async function resolveSourceUrls(
   const feedUrl = await findRssLink(html, source.url)
 
   if (feedUrl) {
-    log(`  Discovered RSS: ${feedUrl}`)
+    sLog(`Discovered RSS: ${feedUrl}`)
     await db.collection("sources").doc(source.id).update({ feedUrl })
     return parseRssFeed(feedUrl)
   }
 
-  log(`  No RSS found — using LLM to extract article URLs`)
+  sLog(`No RSS found — using LLM to extract article URLs`)
   const { JSDOM: _JSDOM } = await import("jsdom")
-  const { Readability } = await import("@mozilla/readability")
   const { default: TurndownService } = await import("turndown")
   const doc = new _JSDOM(html, { url: source.url })
-  const article = new Readability(doc.window.document).parse()
 
-  // Use markdown (converted from HTML) so links are preserved for the LLM
+  // Convert full body HTML to markdown so all listing links are preserved for the LLM
   const td = new TurndownService({ headingStyle: "atx" })
-  let markdown = article?.content ? td.turndown(article.content) : ""
+  const bodyHtml = doc.window.document.body?.innerHTML ?? html
+  let markdown = td.turndown(bodyHtml)
 
   if (markdown.length < 500 && process.env.FIRECRAWL_API_KEY) {
-    log(`  Insufficient content from Readability — trying Firecrawl`)
+    sLog(`Insufficient content from page — trying Firecrawl`)
     const fc = await firecrawlFetch(source.url)
     if (fc) markdown = fc
   }
 
-  if (!markdown) return []
+  if (!markdown) {
+    sLog(`No page markdown extracted`)
+    return []
+  }
 
   const urls = await extractUrlsWithLlm(markdown, source.url)
-  log(`  LLM extracted ${urls.length} URLs`)
+  sLog(`LLM extracted ${urls.length} URLs`)
   return urls.map((url) => ({ url, pubDate: null }))
 }
 
@@ -756,9 +765,20 @@ async function runAiPipeline(articleIds: string[], stats: IngestStats, log: (msg
 
       const publishedAt = cluster.articles.find((a) => a.pubDate)?.pubDate ?? new Date()
 
+      const categories = Array.from(
+        new Set(
+          clusterArticlesData
+            .map((a) => a.sourceCategory)
+            .filter((c): c is SourceCategory => Boolean(c))
+        )
+      )
+      const primaryCategory = categories[0] ?? "industry-news"
+
       await db.collection("clusters").add({
         summary,
         topicTag,
+        categories,
+        primaryCategory,
         sentiment,
         entities,
         importanceScore,
@@ -842,13 +862,46 @@ export function rankClustersByImportance(clusters: Cluster[]): Cluster[] {
   return [...clusters].sort((a, b) => computeClusterImpactScore(b) - computeClusterImpactScore(a))
 }
 
+export function filterClustersByCategory(clusters: Cluster[], category: SourceCategory): Cluster[] {
+  return clusters.filter((cluster) => {
+    if (cluster.categories && cluster.categories.includes(category)) return true
+    if (cluster.primaryCategory === category) return true
+    if (cluster.articles?.some((a) => a.sourceCategory === category)) return true
+
+    // Fallback for legacy clusters based on topicTag
+    if (category === "frontier-research" && cluster.topicTag === "research") return true
+    if (
+      category === "ai-engineering" &&
+      (cluster.topicTag === "agents" || cluster.topicTag === "product")
+    )
+      return true
+    if (
+      category === "ecosystem-analysis" &&
+      (cluster.topicTag === "opinion" || cluster.topicTag === "education")
+    )
+      return true
+    if (
+      category === "industry-news" &&
+      (cluster.topicTag === "model-release" ||
+        cluster.topicTag === "funding" ||
+        cluster.topicTag === "policy" ||
+        cluster.topicTag === "industry")
+    )
+      return true
+
+    return false
+  })
+}
+
 async function generateDigestFromClusters(
   clusters: Cluster[],
   scope: DigestScope = "daily",
   timeframeLabel = "the last 3 days",
-  log: (msg: string) => void = console.log
+  log: (msg: string) => void = console.log,
+  category: SourceCategory | "all" = "all"
 ): Promise<void> {
   const now = new Date()
+  if (clusters.length === 0) return
 
   interface IndexedArticle {
     index: number
@@ -883,7 +936,12 @@ async function generateDigestFromClusters(
     })
     .join("\n\n")
 
-  const prompt = `You are an AI news analyst. Based on the following AI news stories from ${timeframeLabel}, write a concise digest for a technically sophisticated audience.
+  const categoryContext =
+    category !== "all"
+      ? ` focusing specifically on the "${category}" domain (engineering, research, ecosystem, or industry news)`
+      : ""
+
+  const prompt = `You are an AI news analyst${categoryContext}. Based on the following AI news stories from ${timeframeLabel}, write a concise digest for a technically sophisticated audience.
 
 NEWS STORIES:
 ${clusterLines}
@@ -923,7 +981,11 @@ Rules:
   if (Array.isArray(parsed.insights)) {
     for (const item of parsed.insights) {
       if (typeof item === "string") {
-        insights.push({ text: item, sources: [] })
+        insights.push({
+          text: item,
+          category: category !== "all" ? category : undefined,
+          sources: [],
+        })
       } else if (item && typeof item === "object" && typeof item.text === "string") {
         const rawIndices: number[] = Array.isArray(item.articleIndices)
           ? item.articleIndices.filter((n: unknown): n is number => typeof n === "number")
@@ -947,14 +1009,15 @@ Rules:
 
         insights.push({
           text: item.text,
+          category: category !== "all" ? category : undefined,
           sources,
         })
       }
     }
   }
 
-  await saveDigest({ headline, insights, generatedAt: now }, scope)
-  log(`  Digest (${scope}) saved: "${headline.slice(0, 60)}…"`)
+  await saveDigest({ headline, insights, generatedAt: now, category }, scope, category)
+  log(`  Digest (${scope}, category: ${category}) saved: "${headline.slice(0, 60)}…"`)
 }
 
 export async function generateAndSaveDigest(
@@ -969,7 +1032,22 @@ export async function generateAndSaveDigest(
     return
   }
 
-  await generateDigestFromClusters(clusters, "daily", "the last 3 days", log)
+  // 1. General Cross-Category Digest
+  await generateDigestFromClusters(clusters, "daily", "the last 3 days", log, "all")
+
+  // 2. Category-Specific Digests
+  const categories: SourceCategory[] = [
+    "ai-engineering",
+    "frontier-research",
+    "ecosystem-analysis",
+    "industry-news",
+  ]
+  for (const cat of categories) {
+    const catClusters = filterClustersByCategory(clusters, cat)
+    if (catClusters.length > 0) {
+      await generateDigestFromClusters(catClusters, "daily", "the last 3 days", log, cat)
+    }
+  }
 }
 
 export async function generateWeeklyDigest(
@@ -985,12 +1063,28 @@ export async function generateWeeklyDigest(
   }
 
   const sortedClusters = rankClustersByImportance(rawClusters).slice(0, 30)
-  await generateDigestFromClusters(sortedClusters, "weekly", "the last 7 days", log)
+
+  // General Cross-Category Digest
+  await generateDigestFromClusters(sortedClusters, "weekly", "the last 7 days", log, "all")
+
+  // Category-Specific Digests
+  const categories: SourceCategory[] = [
+    "ai-engineering",
+    "frontier-research",
+    "ecosystem-analysis",
+    "industry-news",
+  ]
+  for (const cat of categories) {
+    const catClusters = filterClustersByCategory(sortedClusters, cat)
+    if (catClusters.length > 0) {
+      await generateDigestFromClusters(catClusters, "weekly", "the last 7 days", log, cat)
+    }
+  }
 }
 
 export async function generateMonthlyDigest(
   log: (msg: string) => void = console.log,
-  isColdStart = false
+  _isColdStart = false
 ): Promise<void> {
   const now = new Date()
   const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
@@ -1004,7 +1098,22 @@ export async function generateMonthlyDigest(
     return
   }
 
-  await generateDigestFromClusters(sortedClusters, "monthly", "the past 30 days", log)
+  // General Cross-Category Digest
+  await generateDigestFromClusters(sortedClusters, "monthly", "the past 30 days", log, "all")
+
+  // Category-Specific Digests
+  const categories: SourceCategory[] = [
+    "ai-engineering",
+    "frontier-research",
+    "ecosystem-analysis",
+    "industry-news",
+  ]
+  for (const cat of categories) {
+    const catClusters = filterClustersByCategory(sortedClusters, cat)
+    if (catClusters.length > 0) {
+      await generateDigestFromClusters(catClusters, "monthly", "the past 30 days", log, cat)
+    }
+  }
 }
 
 export async function generateAllTimeOverview(
@@ -1115,6 +1224,21 @@ Return JSON:
 
     await saveDigest({ headline, insights, generatedAt: now }, "overview")
     log(`  All-Time Field Overview updated: "${headline.slice(0, 60)}…"`)
+  }
+
+  // Category-Specific Overview Digests
+  const categories: SourceCategory[] = [
+    "ai-engineering",
+    "frontier-research",
+    "ecosystem-analysis",
+    "industry-news",
+  ]
+  const allClusters = await getClusters(300)
+  for (const cat of categories) {
+    const catClusters = filterClustersByCategory(allClusters, cat)
+    if (catClusters.length > 0) {
+      await generateDigestFromClusters(catClusters, "overview", "all recorded history", log, cat)
+    }
   }
 }
 

@@ -1,5 +1,12 @@
 import { Firestore, FieldValue, type QueryDocumentSnapshot } from "@google-cloud/firestore"
-import type { Cluster, ClusterArticle, Digest, DigestScope, Source } from "@/lib/types"
+import type {
+  Cluster,
+  ClusterArticle,
+  Digest,
+  DigestScope,
+  Source,
+  SourceCategory,
+} from "@/lib/types"
 
 // Initialize Google Cloud Firestore
 // For production, you should use service account credentials
@@ -9,6 +16,7 @@ const db = new Firestore({
   // If you have a service account key file, uncomment and use:
   // keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
   databaseId: process.env.FIRESTORE_DATABASE_ID,
+  ignoreUndefinedProperties: true,
   // Add connection pooling settings
   maxIdleTime: 0, // no idle timeout — keep connections open
   maxConcurrency: 100, // Max concurrent requests
@@ -36,6 +44,7 @@ export function docToSource(id: string, data: FirebaseFirestore.DocumentData): S
     feedUrl: data.feedUrl,
     name: data.name,
     enabled: data.enabled,
+    category: (data.category as SourceCategory) ?? "industry-news",
     createdAt: data.createdAt?.toDate?.() ?? new Date(),
   }
 }
@@ -48,6 +57,8 @@ function mapDocToCluster(doc: QueryDocumentSnapshot): Cluster {
     id: doc.id,
     summary: d.summary,
     topicTag: d.topicTag,
+    categories: d.categories ?? (d.primaryCategory ? [d.primaryCategory] : []),
+    primaryCategory: d.primaryCategory ?? undefined,
     sentiment: d.sentiment,
     entities: d.entities ?? [],
     isSingleton: d.isSingleton ?? false,
@@ -129,52 +140,54 @@ export async function getRecentClusterCentroids(days = 3): Promise<StoredCluster
 
 export async function saveDigest(
   digest: Omit<Digest, "generatedAt"> & { generatedAt: Date },
-  scope: DigestScope = "daily"
+  scope: DigestScope = "daily",
+  category?: SourceCategory | "all"
 ): Promise<void> {
-  const docId = scope === "daily" ? "latest" : scope
-  await db.collection("digest").doc(docId).set({
+  const cat = category && category !== "all" ? category : null
+  const docId = cat ? `${scope}_${cat}` : scope === "daily" ? "latest" : scope
+
+  const payload = {
     headline: digest.headline,
     insights: digest.insights,
     generatedAt: digest.generatedAt,
     scope,
-  })
-  if (scope === "daily") {
-    await db.collection("digest").doc("daily").set({
-      headline: digest.headline,
-      insights: digest.insights,
-      generatedAt: digest.generatedAt,
-      scope: "daily",
-    })
+    category: category ?? "all",
+  }
+
+  await db.collection("digest").doc(docId).set(payload)
+
+  if (scope === "daily" && !cat) {
+    await db.collection("digest").doc("daily").set(payload)
   }
 }
 
-export async function getLatestDigest(scope: DigestScope = "daily"): Promise<Digest | null> {
+export async function getLatestDigest(
+  scope: DigestScope = "daily",
+  category?: SourceCategory | "all"
+): Promise<Digest | null> {
   try {
-    const docId = scope === "daily" ? "latest" : scope
-    const doc = await db.collection("digest").doc(docId).get()
+    const cat = category && category !== "all" ? category : null
+    const docId = cat ? `${scope}_${cat}` : scope === "daily" ? "latest" : scope
+
+    let doc = await db.collection("digest").doc(docId).get()
+    if (!doc.exists && scope === "daily" && !cat) {
+      doc = await db.collection("digest").doc("latest").get()
+    }
+
     if (!doc.exists) {
-      if (scope === "daily") {
-        const latestDoc = await db.collection("digest").doc("latest").get()
-        if (!latestDoc.exists) return null
-        const d = latestDoc.data()!
-        return {
-          headline: d.headline ?? "",
-          insights: d.insights ?? [],
-          generatedAt: d.generatedAt?.toDate?.() ?? new Date(),
-          scope: "daily",
-        }
-      }
       return null
     }
+
     const d = doc.data()!
     return {
       headline: d.headline ?? "",
       insights: d.insights ?? [],
       generatedAt: d.generatedAt?.toDate?.() ?? new Date(),
       scope: (d.scope as DigestScope) ?? scope,
+      category: (d.category as SourceCategory | "all") ?? category ?? "all",
     }
   } catch (error) {
-    console.error(`Error fetching digest (${scope}):`, error)
+    console.error(`Error fetching digest (${scope}, ${category}):`, error)
     return null
   }
 }

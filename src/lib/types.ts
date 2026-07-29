@@ -1,5 +1,11 @@
 export type SourceType = "rss" | "page"
 
+export type SourceCategory =
+  | "frontier-research"
+  | "ai-engineering"
+  | "ecosystem-analysis"
+  | "industry-news"
+
 export interface Source {
   id: string
   url: string
@@ -7,6 +13,7 @@ export interface Source {
   feedUrl?: string
   name: string
   enabled: boolean
+  category?: SourceCategory
   createdAt: Date
 }
 
@@ -20,6 +27,7 @@ export interface Article {
   domain: string
   sourceId: string
   sourceName: string
+  sourceCategory?: SourceCategory
   bodyMd: string
   excerpt: string
   relevanceScore: number
@@ -50,6 +58,7 @@ export interface ClusterArticle {
   domain: string
   sourceId: string
   sourceName: string
+  sourceCategory?: SourceCategory
   excerpt: string
   relevanceScore: number
 }
@@ -58,6 +67,8 @@ export interface Cluster {
   id: string
   summary: string
   topicTag: TopicTag
+  categories?: SourceCategory[]
+  primaryCategory?: SourceCategory
   sentiment: Sentiment
   entities: string[]
   isSingleton: boolean
@@ -82,6 +93,7 @@ export interface DigestSource {
 
 export interface GroundedInsight {
   text: string
+  category?: SourceCategory
   sources: DigestSource[]
 }
 
@@ -90,4 +102,5 @@ export interface Digest {
   insights: (string | GroundedInsight)[]
   generatedAt: Date
   scope?: DigestScope
+  category?: SourceCategory | "all"
 }

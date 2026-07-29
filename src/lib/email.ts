@@ -56,7 +56,7 @@ export function renderDigestHtml(digest: Digest | null, clusters: Cluster[]): st
           ? `<span style="display: inline-block; background-color: #f1f5f9; color: #475569; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; margin-bottom: 6px;">${c.topicTag}</span>`
           : ""
 
-        const articleLinks = c.articles
+        const articleLinks = (c.articles || [])
           .slice(0, 3)
           .map(
             (a) =>
@@ -164,8 +164,9 @@ export function renderDigestText(digest: Digest | null, clusters: Cluster[]): st
 
   if (clusters.length > 0) {
     clusters.slice(0, 15).forEach((c, idx) => {
-      text += `[${idx + 1}] [${c.topicTag.toUpperCase()}] ${c.summary}\n`
-      if (c.articles.length > 0) {
+      const tag = (c.topicTag || "other").toUpperCase()
+      text += `[${idx + 1}] [${tag}] ${c.summary}\n`
+      if (c.articles && c.articles.length > 0) {
         c.articles.slice(0, 3).forEach((a) => {
           text += `    • ${a.title || a.url} (${a.url})\n`
         })

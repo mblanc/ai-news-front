@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
     const result = await sendDailyEmailDigest()
     return NextResponse.json({ ok: true, result })
   } catch (err) {
+    console.error("[cron/email-digest] Error sending email digest:", err)
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }

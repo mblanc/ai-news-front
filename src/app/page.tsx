@@ -7,9 +7,9 @@ import { FilterPanel, type FilterOptions } from "@/components/filter-panel"
 import { NewsList } from "@/components/news-list"
 import { LoadingSkeleton } from "@/components/loading-skeleton"
 import { ThemeProvider } from "@/components/theme-provider"
-import { useClusterFilters } from "@/hooks/use-news-filters"
+import { useClusterFilters, type SourceOption } from "@/hooks/use-news-filters"
 import { DailyDigest } from "@/components/daily-digest"
-import type { Cluster } from "@/lib/types"
+import type { Cluster, SourceCategory } from "@/lib/types"
 
 function dayStart(d: Date): Date {
   const s = new Date(d)
@@ -46,19 +46,27 @@ export default function HomePage() {
   const [oldestDay, setOldestDay] = useState<Date | null>(null)
   const [hasMore, setHasMore] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filters, setFilters] = useState<FilterOptions>({ sort: "date-desc" })
+  const [sources, setSources] = useState<SourceOption[]>([])
+  const [filters, setFilters] = useState<FilterOptions>({ sort: "date-desc", category: "all" })
   const sentinelRef = useRef<HTMLDivElement>(null)
   const loadingMoreRef = useRef(false)
 
-  const filteredClusters = useClusterFilters(clusters, filters, searchQuery)
-  const [sources, setSources] = useState<Array<{ id: string; name: string }>>([])
+  const filteredClusters = useClusterFilters(clusters, filters, searchQuery, sources)
 
   useEffect(() => {
     fetch("/api/sources")
       .then((r) => (r.ok ? r.json() : { sources: [] }))
       .then(
-        ({ sources: srcs }: { sources: Array<{ id: string; name: string; enabled: boolean }> }) => {
-          setSources(srcs.filter((s) => s.enabled).map((s) => ({ id: s.id, name: s.name })))
+        ({
+          sources: srcs,
+        }: {
+          sources: Array<{ id: string; name: string; category?: SourceCategory; enabled: boolean }>
+        }) => {
+          setSources(
+            srcs
+              .filter((s) => s.enabled)
+              .map((s) => ({ id: s.id, name: s.name, category: s.category }))
+          )
         }
       )
       .catch(() => {})
@@ -187,7 +195,12 @@ export default function HomePage() {
                   <LoadingSkeleton />
                 ) : (
                   <div className="space-y-6">
-                    {!searchQuery && <DailyDigest />}
+                    {!searchQuery && (
+                      <DailyDigest
+                        category={filters.category}
+                        onCategoryChange={(cat) => setFilters((f) => ({ ...f, category: cat }))}
+                      />
+                    )}
 
                     <div className="flex items-baseline justify-between border-b border-border pb-3">
                       <h2 className="font-newsreader text-2xl sm:text-3xl text-foreground">

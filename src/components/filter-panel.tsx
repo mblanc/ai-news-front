@@ -10,16 +10,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { CalendarIcon, ChevronDown, X } from "lucide-react"
+import { CalendarIcon, ChevronDown, Search, X } from "lucide-react"
 import { format } from "date-fns"
+import type { SourceCategory } from "@/lib/types"
+
+export interface SourceOption {
+  id: string
+  name: string
+  category?: SourceCategory
+}
+
 interface FilterPanelProps {
-  sources: Array<{ id: string; name: string }>
+  sources: SourceOption[]
   onFilter: (filters: FilterOptions) => void
 }
 
 export type SortOption = "date-desc" | "date-asc" | "domain-asc" | "domain-desc"
 
 export interface FilterOptions {
+  category?: SourceCategory | "all"
+  sourceIds?: string[]
   sourceId?: string
   dateRange?: {
     from: Date
@@ -35,23 +45,52 @@ const SORT_LABELS: Record<SortOption, string> = {
   "domain-desc": "Domain (Z\u2013A)",
 }
 
+const CATEGORY_OPTIONS: Array<{ value: SourceCategory | "all"; label: string }> = [
+  { value: "all", label: "🌐 State of AI (All)" },
+  { value: "industry-news", label: "🏢 Industry News" },
+  { value: "ai-engineering", label: "🛠️ AI Engineering" },
+  { value: "frontier-research", label: "🧪 Frontier R&D" },
+  { value: "ecosystem-analysis", label: "📰 Ecosystem Analysis" },
+]
+
 export function FilterPanel({ sources, onFilter }: FilterPanelProps) {
-  const [filters, setFilters] = useState<FilterOptions>({ sort: "date-desc" })
+  const [filters, setFilters] = useState<FilterOptions>({ sort: "date-desc", category: "all" })
   const [dateRange, setDateRange] = useState<{ from?: Date; to?: Date }>({})
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
+  const [isSourcePickerOpen, setIsSourcePickerOpen] = useState(false)
+  const [sourceSearch, setSourceSearch] = useState("")
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const sortedSources = [...sources].sort((a, b) => a.name.localeCompare(b.name))
-  const selectedSourceName = filters.sourceId
-    ? (sources.find((s) => s.id === filters.sourceId)?.name ?? filters.sourceId)
-    : undefined
+  const filteredSourcesList = sortedSources.filter((s) =>
+    s.name.toLowerCase().includes(sourceSearch.toLowerCase())
+  )
 
   useEffect(() => {
     onFilter(filters)
   }, [filters, onFilter])
 
-  const handleSourceChange = (sourceId: string) => {
-    setFilters((prev) => ({ ...prev, sourceId: sourceId === "all" ? undefined : sourceId }))
+  const handleCategoryChange = (val: string) => {
+    setFilters((prev) => ({ ...prev, category: val as SourceCategory | "all" }))
+  }
+
+  const toggleSourceId = (id: string) => {
+    setFilters((prev) => {
+      const current = prev.sourceIds || []
+      const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id]
+      return { ...prev, sourceIds: next.length > 0 ? next : undefined }
+    })
+  }
+
+  const handleSelectAllSources = () => {
+    setFilters((prev) => ({
+      ...prev,
+      sourceIds: sortedSources.map((s) => s.id),
+    }))
+  }
+
+  const handleClearSources = () => {
+    setFilters((prev) => ({ ...prev, sourceIds: undefined, sourceId: undefined }))
   }
 
   const handleDateRangeChange = (range: { from?: Date; to?: Date }) => {
@@ -75,12 +114,16 @@ export function FilterPanel({ sources, onFilter }: FilterPanelProps) {
   }
 
   const clearFilters = () => {
-    setFilters({ sort: "date-desc" })
+    setFilters({ sort: "date-desc", category: "all" })
     setDateRange({})
   }
 
-  const hasActiveFilters = filters.sourceId || filters.dateRange
-  const activeFilterCount = [filters.sourceId, filters.dateRange].filter(Boolean).length
+  const selectedSourceCount = filters.sourceIds?.length ?? (filters.sourceId ? 1 : 0)
+  const isCategoryFiltered = filters.category && filters.category !== "all"
+  const hasActiveFilters = isCategoryFiltered || selectedSourceCount > 0 || filters.dateRange
+  const activeFilterCount = [isCategoryFiltered, selectedSourceCount > 0, filters.dateRange].filter(
+    Boolean
+  ).length
 
   return (
     <div className="border border-border bg-card">
@@ -126,27 +169,106 @@ export function FilterPanel({ sources, onFilter }: FilterPanelProps) {
       >
         <div className="overflow-hidden">
           <div className="p-5 space-y-5">
-            {/* Source */}
+            {/* Category Filter */}
             <div className="space-y-1.5">
-              <label htmlFor="filter-source" className="font-sans text-xs text-muted-foreground">
-                Source
+              <label htmlFor="filter-category" className="font-sans text-xs text-muted-foreground">
+                Category
               </label>
-              <Select value={filters.sourceId || "all"} onValueChange={handleSourceChange}>
+              <Select value={filters.category || "all"} onValueChange={handleCategoryChange}>
                 <SelectTrigger
-                  id="filter-source"
+                  id="filter-category"
                   className="bg-input border-border font-sans text-sm h-9 focus-visible:ring-accent"
                 >
-                  <SelectValue placeholder="All sources" />
+                  <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent className="font-sans text-sm">
-                  <SelectItem value="all">All sources</SelectItem>
-                  {sortedSources.map((source) => (
-                    <SelectItem key={source.id} value={source.id}>
-                      {source.name}
+                  {CATEGORY_OPTIONS.map((cat) => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Multi-Choice Sources Filter */}
+            <div className="space-y-1.5">
+              <label htmlFor="filter-sources" className="font-sans text-xs text-muted-foreground">
+                Sources ({selectedSourceCount > 0 ? `${selectedSourceCount} selected` : "All"})
+              </label>
+              <Popover open={isSourcePickerOpen} onOpenChange={setIsSourcePickerOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    id="filter-sources"
+                    type="button"
+                    className="w-full h-9 flex items-center justify-between px-3 font-sans text-sm text-foreground bg-input border border-border hover:bg-card focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-colors"
+                  >
+                    <span className="truncate">
+                      {selectedSourceCount === 0
+                        ? "All sources"
+                        : selectedSourceCount === 1
+                          ? (sources.find(
+                              (s) => s.id === (filters.sourceIds?.[0] ?? filters.sourceId)
+                            )?.name ?? "1 source")
+                          : `${selectedSourceCount} sources selected`}
+                    </span>
+                    <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72 p-0 z-[9999]" align="start" sideOffset={4}>
+                  <div className="p-3 bg-background border border-border shadow-md space-y-2">
+                    <div className="flex items-center gap-2 border border-border bg-input px-2.5 py-1.5">
+                      <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Search sources…"
+                        value={sourceSearch}
+                        onChange={(e) => setSourceSearch(e.target.value)}
+                        className="w-full bg-transparent font-sans text-xs outline-none text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] font-sans px-1">
+                      <button
+                        type="button"
+                        onClick={handleSelectAllSources}
+                        className="text-accent hover:underline font-mono"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleClearSources}
+                        className="text-muted-foreground hover:underline font-mono"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div className="max-h-48 overflow-y-auto space-y-1 pr-1 border-t border-border pt-2">
+                      {filteredSourcesList.map((source) => {
+                        const isChecked =
+                          filters.sourceIds?.includes(source.id) ?? filters.sourceId === source.id
+                        return (
+                          <label
+                            key={source.id}
+                            className="flex items-center gap-2 px-2 py-1 hover:bg-muted/30 cursor-pointer font-sans text-xs select-none"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleSourceId(source.id)}
+                              className="cursor-pointer h-3.5 w-3.5 accent-foreground"
+                            />
+                            <span className="truncate flex-1 text-foreground">{source.name}</span>
+                          </label>
+                        )
+                      })}
+                      {filteredSourcesList.length === 0 && (
+                        <p className="text-xs text-muted-foreground p-2">No matching sources</p>
+                      )}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Date Range */}
@@ -163,7 +285,6 @@ export function FilterPanel({ sources, onFilter }: FilterPanelProps) {
                     id="filter-date-range"
                     type="button"
                     className="w-full h-9 flex items-center gap-2 px-3 font-sans text-sm text-foreground bg-input border border-border hover:bg-card focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none transition-colors"
-                    style={{ borderRadius: 0 }}
                     onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
                   >
                     <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -171,7 +292,7 @@ export function FilterPanel({ sources, onFilter }: FilterPanelProps) {
                       {dateRange.from ? (
                         dateRange.to ? (
                           <>
-                            {format(dateRange.from, "LLL dd, y")} \u2014{" "}
+                            {format(dateRange.from, "LLL dd, y")} —{" "}
                             {format(dateRange.to, "LLL dd, y")}
                           </>
                         ) : (
@@ -230,14 +351,27 @@ export function FilterPanel({ sources, onFilter }: FilterPanelProps) {
             {/* Active filter chips */}
             {hasActiveFilters && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {filters.sourceId && (
+                {isCategoryFiltered && (
                   <span className="inline-flex items-center gap-1 font-sans text-[11px] text-foreground border border-border px-2 py-1">
-                    {selectedSourceName}
+                    {CATEGORY_OPTIONS.find((c) => c.value === filters.category)?.label}
                     <button
                       type="button"
-                      aria-label={`Remove ${selectedSourceName} filter`}
-                      onClick={() => handleSourceChange("all")}
-                      className="p-2 -m-1 flex items-center justify-center hover:text-accent transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none"
+                      aria-label="Remove category filter"
+                      onClick={() => handleCategoryChange("all")}
+                      className="p-1 -m-1 flex items-center justify-center hover:text-accent transition-colors"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </span>
+                )}
+                {selectedSourceCount > 0 && (
+                  <span className="inline-flex items-center gap-1 font-sans text-[11px] text-foreground border border-border px-2 py-1">
+                    {selectedSourceCount} {selectedSourceCount === 1 ? "source" : "sources"}
+                    <button
+                      type="button"
+                      aria-label="Remove sources filter"
+                      onClick={handleClearSources}
+                      className="p-1 -m-1 flex items-center justify-center hover:text-accent transition-colors"
                     >
                       <X className="h-2.5 w-2.5" />
                     </button>
@@ -250,7 +384,7 @@ export function FilterPanel({ sources, onFilter }: FilterPanelProps) {
                       type="button"
                       aria-label="Remove date range filter"
                       onClick={() => handleDateRangeChange({})}
-                      className="p-2 -m-1 flex items-center justify-center hover:text-accent transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:outline-none"
+                      className="p-1 -m-1 flex items-center justify-center hover:text-accent transition-colors"
                     >
                       <X className="h-2.5 w-2.5" />
                     </button>

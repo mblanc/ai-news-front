@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { ExternalLink } from "lucide-react"
-import type { Digest, DigestScope } from "@/lib/types"
+import type { Digest, DigestScope, SourceCategory } from "@/lib/types"
 
 interface DigestData extends Omit<Digest, "generatedAt"> {
   generatedAt: string
@@ -25,48 +25,68 @@ const SCOPES: { id: DigestScope; label: string; tag: string }[] = [
   { id: "overview", label: "Field Overview", tag: "State of AI overview" },
 ]
 
-export function DailyDigest() {
+const CATEGORIES: { id: SourceCategory | "all"; label: string; icon: string }[] = [
+  { id: "all", label: "State of AI", icon: "🌐" },
+  { id: "ai-engineering", label: "AI Engineering", icon: "🛠️" },
+  { id: "frontier-research", label: "Frontier R&D", icon: "🧪" },
+  { id: "ecosystem-analysis", label: "Ecosystem", icon: "📰" },
+  { id: "industry-news", label: "Industry", icon: "🏢" },
+]
+
+interface DailyDigestProps {
+  category?: SourceCategory | "all"
+  onCategoryChange?: (category: SourceCategory | "all") => void
+}
+
+export function DailyDigest({ category = "all", onCategoryChange }: DailyDigestProps) {
   const [activeScope, setActiveScope] = useState<DigestScope>("daily")
+  const [internalCategory, setInternalCategory] = useState<SourceCategory | "all">(category)
   const [digest, setDigest] = useState<DigestData | null>(null)
   const [status, setStatus] = useState<"loading" | "ready" | "empty" | "error">("loading")
 
+  const currentCategory = category ?? internalCategory
+
   useEffect(() => {
     let isCancelled = false
-    fetch(`/api/digest?scope=${activeScope}`)
-      .then((r) => {
-        if (r.status === 404) return null
-        if (!r.ok) throw new Error("fetch failed")
-        return r.json() as Promise<DigestData>
-      })
-      .then((data) => {
+
+    const loadDigest = async () => {
+      setStatus("loading")
+      try {
+        const r = await fetch(`/api/digest?scope=${activeScope}&category=${currentCategory}`)
         if (isCancelled) return
-        if (!data) {
+        if (r.status === 404) {
           setStatus("empty")
           setDigest(null)
           return
         }
+        if (!r.ok) throw new Error("fetch failed")
+        const data: DigestData = await r.json()
+        if (isCancelled) return
         setDigest(data)
         setStatus("ready")
-      })
-      .catch(() => {
+      } catch {
         if (isCancelled) return
         setStatus("error")
         setDigest(null)
-      })
+      }
+    }
+
+    loadDigest()
 
     return () => {
       isCancelled = true
     }
-  }, [activeScope])
+  }, [activeScope, currentCategory])
 
   const currentScopeObj = SCOPES.find((s) => s.id === activeScope) ?? SCOPES[0]
+  const currentCategoryObj = CATEGORIES.find((c) => c.id === currentCategory) ?? CATEGORIES[0]
 
   return (
     <div className="border border-border p-5 space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-border/40">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-border/40">
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
-            {currentScopeObj.tag}
+            {currentCategoryObj.icon} {currentCategoryObj.label} • {currentScopeObj.tag}
           </span>
           {digest?.generatedAt && (
             <span className="font-mono text-[10px] text-muted-foreground/70">
@@ -81,7 +101,6 @@ export function DailyDigest() {
             <button
               key={scope.id}
               onClick={() => {
-                setStatus("loading")
                 setActiveScope(scope.id)
               }}
               className={`font-mono text-[10px] px-2.5 py-1 rounded transition-colors ${
@@ -94,6 +113,27 @@ export function DailyDigest() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Category Pills Bar */}
+      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.id}
+            onClick={() => {
+              setInternalCategory(cat.id)
+              onCategoryChange?.(cat.id)
+            }}
+            className={`font-mono text-[11px] px-3 py-1 rounded-full border transition-colors flex items-center gap-1.5 ${
+              currentCategory === cat.id
+                ? "bg-primary text-primary-foreground font-medium border-primary"
+                : "bg-muted/30 hover:bg-muted/60 text-muted-foreground border-border/60"
+            }`}
+          >
+            <span>{cat.icon}</span>
+            <span>{cat.label}</span>
+          </button>
+        ))}
       </div>
 
       {status === "loading" && (
@@ -109,13 +149,14 @@ export function DailyDigest() {
 
       {status === "empty" && (
         <p className="font-mono text-xs text-muted-foreground italic pt-2">
-          No {currentScopeObj.label.toLowerCase()} digest generated yet.
+          No {currentCategoryObj.label} digest for {currentScopeObj.label.toLowerCase()} available
+          yet. Run ingestion to generate.
         </p>
       )}
 
       {status === "error" && (
         <p className="font-mono text-xs text-red-500 italic pt-2">
-          Failed to load {currentScopeObj.label.toLowerCase()} digest.
+          Failed to load {currentCategoryObj.label} {currentScopeObj.label.toLowerCase()} digest.
         </p>
       )}
 
