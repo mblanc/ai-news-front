@@ -24,7 +24,9 @@ export interface ScorerAdapter {
 }
 
 export interface ClusterEngineAdapter {
-  clusterScoredArticle(article: Article): Promise<{
+  clusterScoredArticle(
+    article: Article
+  ): Promise<{
     clusterId: string
     isNewCluster: boolean
     embedding?: number[]
@@ -52,6 +54,35 @@ export interface IngestionPipelineRunOptions {
 
 const RELEVANCE_THRESHOLD = 5
 const THREE_DAYS_MS = 72 * 60 * 60 * 1000
+const DOMAIN_DELAY_MS = 500
+
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms))
+}
+
+export async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let index = 0
+
+  async function worker(): Promise<void> {
+    while (index < items.length) {
+      const currentIndex = index++
+      try {
+        results[currentIndex] = await fn(items[currentIndex])
+      } catch (err) {
+        throw err
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker())
+  await Promise.all(workers)
+  return results
+}
 
 export class IngestionPipeline {
   private extractor: ExtractorAdapter
@@ -128,26 +159,26 @@ export class IngestionPipeline {
       `Found ${enabledSources.length} enabled source${enabledSources.length === 1 ? "" : "s"}`
     )
 
-    // Step 2: Fetch feed URLs
+    // Step 2: Fetch feed URLs (Parallel: 5 concurrent workers)
     emit("fetch_feed", 2, "Step 2/9 — Resolving article URLs")
     const rawItems: Array<{ url: string; title: string; source: Source; pubDate?: Date | null }> =
       []
 
-    for (const source of enabledSources) {
+    const sourceResults = await runWithConcurrencyLimit(enabledSources, 5, async (source) => {
       const targetUrl = source.feedUrl || source.url
       try {
         const items = await this.extractor.fetchFeedUrls(targetUrl)
         let tooOldCount = 0
         let keptCount = 0
         const cutoffTime = new Date(Date.now() - THREE_DAYS_MS)
+        const keptItems: typeof rawItems = []
 
         for (const item of items) {
           if (item.pubDate && item.pubDate < cutoffTime) {
             tooOldCount++
-            stats.too_old++
           } else {
             keptCount++
-            rawItems.push({
+            keptItems.push({
               url: item.url,
               title: item.title,
               source,
@@ -161,10 +192,18 @@ export class IngestionPipeline {
           2,
           `  [${source.name}]: ${items.length} items (${tooOldCount} too old, ${keptCount} kept)`
         )
+        return { keptItems, tooOldCount }
       } catch (err) {
         emit("fetch_feed", 2, `  Error resolving ${source.name}: ${(err as Error).message}`)
+        return { keptItems: [], tooOldCount: 0 }
       }
+    })
+
+    for (const res of sourceResults) {
+      rawItems.push(...res.keptItems)
+      stats.too_old += res.tooOldCount
     }
+
     stats.urls_found = rawItems.length
     emit(
       "fetch_feed",
@@ -194,12 +233,9 @@ export class IngestionPipeline {
       `  ${newCandidates.length} new URLs to scrape (${stats.urls_found - newCandidates.length} already ingested)`
     )
 
-    // Step 4: Scrape content
+    // Step 4: Scrape content (Parallel across 5 concurrent domain queues with 500ms delay)
     emit("scrape_content", 4, "Step 4/9 — Scraping articles")
-    const scrapedArticles: Array<{
-      candidate: (typeof newCandidates)[0]
-      content: ExtractedContent
-    }> = []
+    const itemsByDomain: Record<string, typeof newCandidates> = {}
 
     for (const candidate of newCandidates) {
       let domain = candidate.source.name
@@ -208,48 +244,69 @@ export class IngestionPipeline {
       } catch {
         // Fallback to source name
       }
-
-      emit("scrape_content", 4, `  Scraping [${domain}]: ${candidate.url}`)
-      let content: ExtractedContent
-      try {
-        content = await this.extractor.scrapeContent(candidate.url)
-        if (content.fallbackSource) {
-          emit("scrape_content", 4, `  Saved via ${content.fallbackSource}: ${candidate.url}`)
-        } else {
-          emit("scrape_content", 4, `  Saved: "${content.title || candidate.title}"`)
-        }
-        scrapedArticles.push({ candidate, content })
-      } catch (_err) {
-        emit("scrape_content", 4, `  No content extracted [${domain}] — marking as fetch_failed`)
-        const urlHash = sha256(candidate.url)
-        const failedArticle: Article = {
-          id: urlHash,
-          url: candidate.url,
-          urlHash,
-          title: candidate.title,
-          domain,
-          sourceId: candidate.source.id,
-          sourceName: candidate.source.name,
-          sourceCategory: candidate.source.category,
-          bodyMd: "",
-          excerpt: "",
-          relevanceScore: 0,
-          embedding: [],
-          status: "fetch_failed",
-          ingestedAt: new Date(),
-        }
-        await this.repository.saveArticle(failedArticle)
+      if (!itemsByDomain[domain]) {
+        itemsByDomain[domain] = []
       }
+      itemsByDomain[domain].push(candidate)
     }
 
-    stats.new_articles = scrapedArticles.length
+    const domains = Object.keys(itemsByDomain)
+    const scrapedArticles: Array<{
+      candidate: (typeof newCandidates)[0]
+      content: ExtractedContent
+    }> = []
+    const domainLastFetch: Record<string, number> = {}
+
+    await runWithConcurrencyLimit(domains, 5, async (domain) => {
+      const items = itemsByDomain[domain]
+
+      for (const candidate of items) {
+        const last = domainLastFetch[domain]
+        if (last && Date.now() - last < DOMAIN_DELAY_MS) {
+          await sleep(DOMAIN_DELAY_MS - (Date.now() - last))
+        }
+        domainLastFetch[domain] = Date.now()
+
+        emit("scrape_content", 4, `  Scraping [${domain}]: ${candidate.url}`)
+        try {
+          const content = await this.extractor.scrapeContent(candidate.url)
+          if (content.fallbackSource) {
+            emit("scrape_content", 4, `  Saved via ${content.fallbackSource}: ${candidate.url}`)
+          } else {
+            emit("scrape_content", 4, `  Saved: "${content.title || candidate.title}"`)
+          }
+          scrapedArticles.push({ candidate, content })
+        } catch (_err) {
+          emit("scrape_content", 4, `  No content extracted [${domain}] — marking as fetch_failed`)
+          const urlHash = sha256(candidate.url)
+          const failedArticle: Article = {
+            id: urlHash,
+            url: candidate.url,
+            urlHash,
+            title: candidate.title,
+            domain,
+            sourceId: candidate.source.id,
+            sourceName: candidate.source.name,
+            sourceCategory: candidate.source.category,
+            bodyMd: "",
+            excerpt: "",
+            relevanceScore: 0,
+            embedding: [],
+            status: "fetch_failed",
+            ingestedAt: new Date(),
+          }
+          await this.repository.saveArticle(failedArticle)
+        }
+      }
+    })
+
     emit(
       "scrape_content",
       4,
-      `Scraped ${stats.new_articles} article${stats.new_articles === 1 ? "" : "s"}`
+      `Scraped ${scrapedArticles.length} article${scrapedArticles.length === 1 ? "" : "s"}`
     )
 
-    // Step 5: Score relevance
+    // Step 5: Score relevance (Parallel: 10 concurrent LLM workers)
     emit("score_relevance", 5, "Step 5/9 — Scoring relevance")
     const relevantArticles: Array<{
       candidate: (typeof newCandidates)[0]
@@ -257,7 +314,7 @@ export class IngestionPipeline {
       score: number
     }> = []
 
-    for (const { candidate, content } of scrapedArticles) {
+    await runWithConcurrencyLimit(scrapedArticles, 10, async ({ candidate, content }) => {
       let score = 5
       try {
         score = await this.scorer.scoreArticle(content.title, content.bodyMd, content.excerpt)
@@ -284,7 +341,7 @@ export class IngestionPipeline {
           `  Relevant (score ${score}/10): "${content.title || candidate.title}"`
         )
       }
-    }
+    })
 
     stats.new_articles = relevantArticles.length
     emit(
@@ -293,12 +350,12 @@ export class IngestionPipeline {
       `Scoring done: ${relevantArticles.length} relevant, ${stats.discarded} discarded`
     )
 
-    // Step 6: Generate embeddings & Step 7: Cluster & Step 8: Persist
+    // Step 6: Generate embeddings & Step 7: Cluster & Step 8: Persist (Parallel: 10 concurrent workers)
     emit("cluster_articles", 6, "Step 6/9 — Generating embeddings")
     emit("cluster_articles", 7, "Step 7/9 — Clustering")
     emit("cluster_articles", 8, "Step 8/9 — Persisting results")
 
-    for (const { candidate, content, score } of relevantArticles) {
+    await runWithConcurrencyLimit(relevantArticles, 10, async ({ candidate, content, score }) => {
       const urlHash = sha256(candidate.url)
       let domain = candidate.source.name
       try {
@@ -348,7 +405,7 @@ export class IngestionPipeline {
       }
 
       await this.repository.saveArticle(article)
-    }
+    })
 
     // Step 9: Purge TTL expired articles
     emit("purge_ttl", 9, "Step 9/9 — Purging expired articles")
