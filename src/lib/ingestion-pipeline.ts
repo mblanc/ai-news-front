@@ -547,19 +547,24 @@ export function createProductionIngestionPipeline(): IngestionPipeline {
       async purgeExpiredArticles() {
         const { db } = await import("@/lib/firebase")
         const now = new Date()
-        const snap = await db.collection("articles").where("expireAt", "<=", now).get()
-        if (snap.empty) return 0
-
-        const BATCH_SIZE = 400
-        const docs = snap.docs
         let totalPurged = 0
+        const PAGE_SIZE = 100
 
-        for (let i = 0; i < docs.length; i += BATCH_SIZE) {
-          const chunk = docs.slice(i, i + BATCH_SIZE)
+        while (true) {
+          const snap = await db
+            .collection("articles")
+            .where("expireAt", "<=", now)
+            .limit(PAGE_SIZE)
+            .get()
+
+          if (snap.empty) break
+
           const batch = db.batch()
-          chunk.forEach((doc) => batch.delete(doc.ref))
+          snap.docs.forEach((doc) => batch.delete(doc.ref))
           await batch.commit()
-          totalPurged += chunk.length
+          totalPurged += snap.size
+
+          if (snap.size < PAGE_SIZE) break
         }
 
         return totalPurged
