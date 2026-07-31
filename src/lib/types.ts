@@ -5,6 +5,7 @@ export type SourceCategory =
   | "ai-engineering"
   | "ecosystem-analysis"
   | "industry-news"
+  | "genmedia"
 
 export interface Source {
   id: string

@@ -1,5 +1,99 @@
 import { sha256 } from "@/lib/hash"
-import type { Source, Article, IngestStats, IngestProgressEvent, IngestStage } from "@/lib/types"
+import type {
+  Source,
+  Article,
+  IngestStats,
+  IngestProgressEvent,
+  IngestStage,
+  TopicTag,
+  Sentiment,
+} from "@/lib/types"
+
+export interface SummaryResult {
+  summary: string
+  keyTakeaways: string[]
+  whyItMatters: string
+  topicTag: TopicTag
+  sentiment: Sentiment
+  entities: string[]
+  importanceScore: number
+}
+
+export async function summariseCluster(
+  articles: Array<{ title: string; excerpt: string; bodyMd?: string }>
+): Promise<SummaryResult> {
+  const articleList = articles
+    .map(
+      (a, i) =>
+        `${i + 1}. Title: ${a.title}\nContent:\n${a.bodyMd ? a.bodyMd.slice(0, 15000) : a.excerpt}`
+    )
+    .join("\n\n---\n\n")
+
+  const prompt = `You are a world-class AI news analyst. Analyze and summarize the following AI news story for a reader who wants a thorough summary before deciding to read the full source text.
+
+Story Articles:
+${articleList}
+
+Output JSON format:
+{
+  "summary": "2-3 sentence executive summary explaining what happened and why it matters.",
+  "keyTakeaways": [
+    "Key takeaway point 1",
+    "Key takeaway point 2",
+    "Key takeaway point 3"
+  ],
+  "whyItMatters": "Clear, direct explanation of the long-term impact or industry significance.",
+  "topicTag": "one of: model-release, research, funding, product, policy, industry, agents, hardware, opinion, education, other",
+  "sentiment": "one of: positive, neutral, negative",
+  "entities": ["entity1", "entity2"],
+  "importanceScore": 7
+}`
+
+  try {
+    const { GoogleGenAI } = await import("@google/genai")
+    const ai = new GoogleGenAI({
+      enterprise: true,
+      project: process.env.GOOGLE_CLOUD_PROJECT_ID,
+      location: process.env.GOOGLE_CLOUD_LOCATION ?? "global",
+    })
+    const model = process.env.INGEST_MODEL ?? "gemini-3.5-flash-lite"
+
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: { responseMimeType: "application/json" },
+    })
+
+    const parsed = JSON.parse(response.text ?? "{}")
+    const importanceScore =
+      typeof parsed.importanceScore === "number"
+        ? Math.min(10, Math.max(1, parsed.importanceScore))
+        : 5
+
+    return {
+      summary:
+        typeof parsed.summary === "string" && parsed.summary.trim()
+          ? parsed.summary
+          : (articles[0]?.title ?? ""),
+      keyTakeaways: Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways : [],
+      whyItMatters: typeof parsed.whyItMatters === "string" ? parsed.whyItMatters : "",
+      topicTag: (parsed.topicTag as TopicTag) ?? "other",
+      sentiment: (parsed.sentiment as Sentiment) ?? "neutral",
+      entities: Array.isArray(parsed.entities) ? parsed.entities : [],
+      importanceScore,
+    }
+  } catch {
+    return {
+      summary: articles[0]?.title ?? "",
+      keyTakeaways: [],
+      whyItMatters: "",
+      topicTag: "other",
+      sentiment: "neutral",
+      entities: [],
+      importanceScore: 5,
+    }
+  }
+}
 
 export interface ExtractedUrlItem {
   url: string
@@ -35,6 +129,7 @@ export interface ClusterEngineAdapter {
 export interface RepositoryAdapter {
   getSources(): Promise<Source[]>
   isUrlHashExisting(urlHash: string): Promise<boolean>
+  batchCheckUrlHashesExisting?(urlHashes: string[]): Promise<Set<string>>
   saveArticle(article: Article): Promise<void>
   purgeExpiredArticles(): Promise<number>
 }
@@ -209,19 +304,34 @@ export class IngestionPipeline {
       `Resolved ${stats.urls_found} unique URLs (${stats.too_old} filtered as too old)`
     )
 
-    // Step 3: Deduplicate against existing repository records
+    // Step 3: Deduplicate against existing repository records (Batch Firestore db.getAll)
     emit("deduplicate", 3, "Step 3/9 — Deduplicating against existing articles")
-    const newCandidates: typeof rawItems = []
     const seenUrls = new Set<string>()
+    const uniqueItems: typeof rawItems = []
 
     for (const item of rawItems) {
       if (seenUrls.has(item.url)) continue
       seenUrls.add(item.url)
+      uniqueItems.push(item)
+    }
 
-      const urlHash = sha256(item.url)
-      const exists = await this.repository.isUrlHashExisting(urlHash)
-      if (!exists) {
-        newCandidates.push(item)
+    const newCandidates: typeof rawItems = []
+
+    if (this.repository.batchCheckUrlHashesExisting) {
+      const hashes = uniqueItems.map((item) => sha256(item.url))
+      const existingHashSet = await this.repository.batchCheckUrlHashesExisting(hashes)
+      for (const item of uniqueItems) {
+        if (!existingHashSet.has(sha256(item.url))) {
+          newCandidates.push(item)
+        }
+      }
+    } else {
+      for (const item of uniqueItems) {
+        const urlHash = sha256(item.url)
+        const exists = await this.repository.isUrlHashExisting(urlHash)
+        if (!exists) {
+          newCandidates.push(item)
+        }
       }
     }
 
@@ -490,12 +600,34 @@ export function createProductionIngestionPipeline(): IngestionPipeline {
           const newC = result.newClusters[0]
           const ref = db.collection("clusters").doc()
           clusterId = ref.id
-          clusterSummary = article.title
-          await ref.set({
+
+          let summaryInfo: SummaryResult = {
             summary: article.title,
+            keyTakeaways: [],
+            whyItMatters: "",
             topicTag: "other",
             sentiment: "neutral",
             entities: [],
+            importanceScore: 5,
+          }
+          try {
+            summaryInfo = await summariseCluster([
+              { title: article.title, excerpt: article.excerpt, bodyMd: article.bodyMd },
+            ])
+          } catch {
+            // Fallback to title
+          }
+
+          clusterSummary = summaryInfo.summary
+
+          await ref.set({
+            summary: summaryInfo.summary,
+            keyTakeaways: summaryInfo.keyTakeaways,
+            whyItMatters: summaryInfo.whyItMatters,
+            topicTag: summaryInfo.topicTag,
+            sentiment: summaryInfo.sentiment,
+            entities: summaryInfo.entities,
+            importanceScore: summaryInfo.importanceScore,
             isSingleton: newC.isSingleton,
             articles: newC.articles.map((a) => ({
               id: a.id,
@@ -516,8 +648,32 @@ export function createProductionIngestionPipeline(): IngestionPipeline {
         } else if (result.updatedClusters.length > 0) {
           const upC = result.updatedClusters[0]
           clusterId = upC.id
-          clusterSummary = article.title
-          await updateCluster(upC.id, upC.articles, upC.centroid)
+
+          let summaryInfo: SummaryResult = {
+            summary: article.title,
+            keyTakeaways: [],
+            whyItMatters: "",
+            topicTag: "other",
+            sentiment: "neutral",
+            entities: [],
+            importanceScore: 5,
+          }
+          try {
+            summaryInfo = await summariseCluster(upC.articles)
+            clusterSummary = summaryInfo.summary
+          } catch {
+            clusterSummary = article.title
+          }
+
+          await updateCluster(upC.id, upC.articles, upC.centroid, {
+            summary: summaryInfo.summary,
+            keyTakeaways: summaryInfo.keyTakeaways,
+            whyItMatters: summaryInfo.whyItMatters,
+            topicTag: summaryInfo.topicTag,
+            sentiment: summaryInfo.sentiment,
+            entities: summaryInfo.entities,
+            importanceScore: summaryInfo.importanceScore,
+          })
         }
 
         return { clusterId, isNewCluster, embedding, clusterSummary }
@@ -533,6 +689,25 @@ export function createProductionIngestionPipeline(): IngestionPipeline {
         const { db } = await import("@/lib/firebase")
         const doc = await db.collection("articles").doc(urlHash).get()
         return doc.exists
+      },
+      async batchCheckUrlHashesExisting(urlHashes: string[]) {
+        if (urlHashes.length === 0) return new Set<string>()
+        const { db } = await import("@/lib/firebase")
+
+        const refs = urlHashes.map((h) => db.collection("articles").doc(h))
+        const BATCH_SIZE = 500
+        const snapBatches = await Promise.all(
+          Array.from({ length: Math.ceil(refs.length / BATCH_SIZE) }, (_, i) =>
+            db.getAll(...refs.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE))
+          )
+        )
+        const existingSet = new Set<string>()
+        for (const snap of snapBatches.flat()) {
+          if (snap.exists) {
+            existingSet.add(snap.id)
+          }
+        }
+        return existingSet
       },
       async saveArticle(article: Article) {
         const { db } = await import("@/lib/firebase")

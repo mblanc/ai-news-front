@@ -72,13 +72,33 @@ Output JSON format:
 
     const parsed = JSON.parse(response.text ?? "{}")
 
+    const summary = parsed.summary ?? cluster.summary ?? "No summary available."
+    const keyTakeaways = Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways : []
+    const whyItMatters = parsed.whyItMatters ?? ""
+    const topicTag = parsed.topicTag ?? cluster.topicTag
+    const sentiment = parsed.sentiment ?? cluster.sentiment
+    const entities = Array.isArray(parsed.entities) ? parsed.entities : cluster.entities
+
+    try {
+      await db.collection("clusters").doc(id).update({
+        summary,
+        keyTakeaways,
+        whyItMatters,
+        topicTag,
+        sentiment,
+        entities,
+      })
+    } catch (err) {
+      console.error("Error updating cluster in Firestore:", err)
+    }
+
     return NextResponse.json({
-      summary: parsed.summary ?? cluster.summary ?? "No summary available.",
-      keyTakeaways: Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways : [],
-      whyItMatters: parsed.whyItMatters ?? "",
-      topicTag: parsed.topicTag ?? cluster.topicTag,
-      sentiment: parsed.sentiment ?? cluster.sentiment,
-      entities: Array.isArray(parsed.entities) ? parsed.entities : cluster.entities,
+      summary,
+      keyTakeaways,
+      whyItMatters,
+      topicTag,
+      sentiment,
+      entities,
     })
   } catch (error) {
     console.error("Error generating on-demand summary:", error)

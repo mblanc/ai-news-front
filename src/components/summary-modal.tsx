@@ -1,6 +1,7 @@
 "use client"
 
-import { ExternalLink, CheckCircle2, FileText } from "lucide-react"
+import { useState, useEffect } from "react"
+import { ExternalLink, CheckCircle2, FileText, Loader2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -40,12 +41,70 @@ const SENTIMENT_CLASSES: Record<string, string> = {
 }
 
 export function SummaryModal({ cluster, open, onOpenChange }: SummaryModalProps) {
+  const [liveSummary, setLiveSummary] = useState<{
+    summary?: string
+    keyTakeaways?: string[]
+    whyItMatters?: string
+    topicTag?: string
+    sentiment?: string
+    entities?: string[]
+  } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [currentClusterId, setCurrentClusterId] = useState<string | null>(null)
+
+  if (cluster && cluster.id !== currentClusterId) {
+    setCurrentClusterId(cluster.id)
+    setLiveSummary(null)
+    setLoading(false)
+  }
+
+  const hasTakeaways = cluster?.keyTakeaways && cluster.keyTakeaways.length > 0
+  const hasWhy = cluster?.whyItMatters && cluster.whyItMatters.trim().length > 0
+  const needsFetch = Boolean(open && cluster && !hasTakeaways && !hasWhy && !liveSummary)
+
+  useEffect(() => {
+    if (!needsFetch || !cluster) return
+
+    let isMounted = true
+    queueMicrotask(() => {
+      if (isMounted) setLoading(true)
+    })
+
+    fetch(`/api/clusters/${cluster.id}/summarize`, { method: "POST" })
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        if (!isMounted) return
+        setLiveSummary({
+          summary: data.summary,
+          keyTakeaways: data.keyTakeaways,
+          whyItMatters: data.whyItMatters,
+          topicTag: data.topicTag,
+          sentiment: data.sentiment,
+          entities: data.entities,
+        })
+      })
+      .catch((err) => {
+        console.error("Failed to generate on-demand summary:", err)
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [needsFetch, cluster])
+
   if (!cluster) return null
 
   const leadArticle = cluster.articles[0]
-  const summaryText = cluster.summary || leadArticle?.excerpt || "No summary available."
-  const takeaways = cluster.keyTakeaways ?? []
-  const whyItMatters = cluster.whyItMatters ?? ""
+  const summaryText =
+    liveSummary?.summary || cluster.summary || leadArticle?.excerpt || "No summary available."
+  const takeaways = liveSummary?.keyTakeaways ?? cluster.keyTakeaways ?? []
+  const whyItMatters = liveSummary?.whyItMatters ?? cluster.whyItMatters ?? ""
+  const entities = liveSummary?.entities ?? cluster.entities ?? []
+  const topicTag = liveSummary?.topicTag ?? cluster.topicTag
+  const sentiment = liveSummary?.sentiment ?? cluster.sentiment
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -58,15 +117,15 @@ export function SummaryModal({ cluster, open, onOpenChange }: SummaryModalProps)
           <div className="flex flex-wrap items-center justify-between gap-2 w-full min-w-0">
             <div className="flex flex-wrap items-center gap-2 min-w-0">
               <span className="border border-border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground shrink-0">
-                {TAG_LABELS[cluster.topicTag] ?? cluster.topicTag}
+                {TAG_LABELS[topicTag] ?? topicTag}
               </span>
-              {cluster.sentiment && (
+              {sentiment && (
                 <span
                   className={`border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest rounded-full shrink-0 ${
-                    SENTIMENT_CLASSES[cluster.sentiment] ?? SENTIMENT_CLASSES.neutral
+                    SENTIMENT_CLASSES[sentiment] ?? SENTIMENT_CLASSES.neutral
                   }`}
                 >
-                  {cluster.sentiment}
+                  {sentiment}
                 </span>
               )}
               {cluster.importanceScore !== undefined && (
@@ -104,13 +163,21 @@ export function SummaryModal({ cluster, open, onOpenChange }: SummaryModalProps)
           </DialogDescription>
         </DialogHeader>
 
+        {/* Loading Indicator for On-Demand Summary Generation */}
+        {loading && (
+          <div className="flex items-center justify-center gap-2.5 p-4 bg-primary/5 border border-primary/20 rounded-md font-mono text-xs text-primary animate-pulse">
+            <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+            <span>Analyzing article & generating AI Key Takeaways...</span>
+          </div>
+        )}
+
         {/* Entities tags */}
-        {cluster.entities && cluster.entities.length > 0 && (
+        {entities && entities.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 pt-1 min-w-0">
             <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mr-1 shrink-0">
               Key Entities:
             </span>
-            {cluster.entities.map((ent, idx) => (
+            {entities.map((ent, idx) => (
               <Badge
                 key={idx}
                 variant="outline"

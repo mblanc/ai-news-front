@@ -195,7 +195,8 @@ export async function getLatestDigest(
 export async function updateCluster(
   id: string,
   articles: ClusterArticle[],
-  centroid: number[]
+  centroid: number[],
+  extraFields?: Record<string, unknown>
 ): Promise<void> {
   await db
     .collection("clusters")
@@ -207,5 +208,6 @@ export async function updateCluster(
       isSingleton: articles.length === 1,
       expireAt: getTtlExpirationDate(),
       updatedAt: FieldValue.serverTimestamp(),
+      ...(extraFields ?? {}),
     })
 }

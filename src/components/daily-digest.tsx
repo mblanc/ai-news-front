@@ -29,6 +29,7 @@ const CATEGORIES: { id: SourceCategory | "all"; label: string; icon: string }[] 
   { id: "all", label: "State of AI", icon: "🌐" },
   { id: "ai-engineering", label: "AI Engineering", icon: "🛠️" },
   { id: "frontier-research", label: "Frontier R&D", icon: "🧪" },
+  { id: "genmedia", label: "GenMedia", icon: "🎨" },
   { id: "ecosystem-analysis", label: "Ecosystem", icon: "📰" },
   { id: "industry-news", label: "Industry", icon: "🏢" },
 ]

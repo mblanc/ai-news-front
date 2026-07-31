@@ -17,6 +17,15 @@ export interface ScrapedArticle extends ExtractedContent {
   html: string
 }
 
+export function cleanArticleTitle(title: string): string {
+  if (!title) return ""
+  return title
+    .replace(/^Paper page\s*[-–—]\s*/i, "")
+    .replace(/^Release\s+.*?\s*·\s*/i, "")
+    .replace(/^(GitHub|GitLab)\s*[-–—]\s*/i, "")
+    .trim()
+}
+
 export function assertSafeUrl(raw: string): void {
   const u = new URL(raw)
   if (!["http:", "https:"].includes(u.protocol)) {
@@ -49,7 +58,6 @@ export class HttpError extends Error {
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-// Reddit requires a descriptive User-Agent per their API rules
 export const REDDIT_USER_AGENT = "ai-news-aggregator/1.0 (by /u/ai-news-bot)"
 
 export function isRedditUrl(url: string): boolean {
@@ -59,7 +67,7 @@ export function isRedditUrl(url: string): boolean {
 
 let redditTokenCache: { token: string; expiresAt: number } | null = null
 
-async function getRedditAccessToken(): Promise<string | null> {
+export async function getRedditAccessToken(): Promise<string | null> {
   const clientId = process.env.REDDIT_CLIENT_ID
   const clientSecret = process.env.REDDIT_CLIENT_SECRET
   if (!clientId || !clientSecret) return null
@@ -84,7 +92,6 @@ async function getRedditAccessToken(): Promise<string | null> {
   }
 
   const data = await response.json()
-  // Cache with a 60s safety margin before expiry
   redditTokenCache = {
     token: data.access_token,
     expiresAt: Date.now() + (data.expires_in - 60) * 1000,
@@ -98,8 +105,6 @@ async function fetchRedditPost(url: string): Promise<ScrapedArticle> {
   const pathname = parsed.pathname.replace(/\/?$/, ".json")
 
   const token = await getRedditAccessToken()
-  // Use oauth.reddit.com with a Bearer token when credentials are available,
-  // fall back to the unauthenticated www endpoint otherwise
   const apiUrl = token ? `https://oauth.reddit.com${pathname}` : `https://www.reddit.com${pathname}`
 
   const headers: Record<string, string> = { "User-Agent": REDDIT_USER_AGENT }
@@ -116,14 +121,13 @@ async function fetchRedditPost(url: string): Promise<ScrapedArticle> {
     throw new HttpError(response.status, apiUrl)
   }
 
-  // Reddit returns [listingPost, listingComments]
   const data = await response.json()
   const post = data?.[0]?.data?.children?.[0]?.data
   if (!post) {
     throw new Error(`Unexpected Reddit JSON structure for ${url}`)
   }
 
-  const title: string = post.title ?? "Untitled"
+  const title: string = cleanArticleTitle(post.title ?? "Untitled")
   const selftext: string = post.selftext ?? ""
   const author: string = post.author ?? ""
   const subreddit: string = post.subreddit_name_prefixed ?? ""
@@ -143,8 +147,8 @@ async function fetchRedditPost(url: string): Promise<ScrapedArticle> {
     title,
     markdown,
     excerpt: selftext.slice(0, 200) || title,
-    byline: `u/${author}`,
-    siteName: "Reddit",
+    byline: author ? `u/${author}` : "",
+    siteName: subreddit || "Reddit",
     originalUrl: url,
     pubDate,
     wordCount: countWords(markdown),
@@ -219,8 +223,6 @@ export async function fetchArticle(url: string): Promise<ScrapedArticle> {
   try {
     doc = new JSDOM(html, { url, virtualConsole })
   } catch {
-    // cssstyle throws on CSS custom properties like var(--x, fallback) — retry without URL
-    // so JSDOM skips relative URL resolution and CSS cascade, which avoids the crash
     doc = new JSDOM(html, { virtualConsole })
   }
 
@@ -244,7 +246,8 @@ export async function fetchArticle(url: string): Promise<ScrapedArticle> {
   }
 
   const markdownBody = turndown.turndown(article.content)
-  const title = article.title || "Untitled"
+  const rawTitle = article.title || "Untitled"
+  const title = cleanArticleTitle(rawTitle)
   const markdown = `# ${title}\n\n${markdownBody}`
 
   return {

@@ -16,7 +16,13 @@ const patchSchema = z.object({
     .optional(),
   type: z.enum(["rss", "page"]).optional(),
   category: z
-    .enum(["frontier-research", "ai-engineering", "ecosystem-analysis", "industry-news"])
+    .enum([
+      "frontier-research",
+      "ai-engineering",
+      "ecosystem-analysis",
+      "industry-news",
+      "genmedia",
+    ])
     .optional(),
 })
 

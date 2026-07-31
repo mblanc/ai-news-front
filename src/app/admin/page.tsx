@@ -22,6 +22,15 @@ interface EditDraft {
   category: SourceCategory
 }
 
+const CATEGORY_TABS: Array<{ value: SourceCategory | "all"; label: string; icon: string }> = [
+  { value: "all", label: "All Categories", icon: "🌐" },
+  { value: "industry-news", label: "Industry News", icon: "🏢" },
+  { value: "ai-engineering", label: "AI Engineering", icon: "🛠️" },
+  { value: "frontier-research", label: "Frontier R&D", icon: "🧪" },
+  { value: "genmedia", label: "GenMedia", icon: "🎨" },
+  { value: "ecosystem-analysis", label: "Ecosystem Analysis", icon: "📰" },
+]
+
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<"sources" | "ingest">("sources")
   const [sources, setSources] = useState<Source[]>([])
@@ -48,10 +57,14 @@ export default function AdminPage() {
   const [emailState, setEmailState] = useState<"idle" | "running" | "done" | "error">("idle")
   const [emailMessage, setEmailMessage] = useState<string | null>(null)
 
-  const [sortField, setSortField] = useState<"name" | "url" | "type" | "enabled" | null>(null)
+  const [sortField, setSortField] = useState<
+    "name" | "url" | "type" | "category" | "enabled" | null
+  >(null)
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<SourceCategory | "all">("all")
+  const [searchQuery, setSearchQuery] = useState("")
 
-  const handleSort = (field: "name" | "url" | "type" | "enabled") => {
+  const handleSort = (field: "name" | "url" | "type" | "category" | "enabled") => {
     if (sortField === field) {
       if (sortDirection === "asc") {
         setSortDirection("desc")
@@ -64,11 +77,29 @@ export default function AdminPage() {
     }
   }
 
-  const sortedSources = [...sources].sort((a, b) => {
+  const filteredSources = sources.filter((source) => {
+    const matchesCategory =
+      selectedCategoryTab === "all" || (source.category ?? "industry-news") === selectedCategoryTab
+
+    const query = searchQuery.trim().toLowerCase()
+    const matchesSearch =
+      !query ||
+      source.name.toLowerCase().includes(query) ||
+      source.url.toLowerCase().includes(query)
+
+    return matchesCategory && matchesSearch
+  })
+
+  const sortedSources = [...filteredSources].sort((a, b) => {
     if (!sortField) return 0
 
     let aValue = a[sortField]
     let bValue = b[sortField]
+
+    if (sortField === "category") {
+      aValue = a.category ?? "industry-news"
+      bValue = b.category ?? "industry-news"
+    }
 
     if (aValue === undefined || aValue === null) aValue = ""
     if (bValue === undefined || bValue === null) bValue = ""
@@ -86,7 +117,7 @@ export default function AdminPage() {
     return 0
   })
 
-  const renderSortIcon = (field: "name" | "url" | "type" | "enabled") => {
+  const renderSortIcon = (field: "name" | "url" | "type" | "category" | "enabled") => {
     if (sortField !== field) {
       return (
         <span className="ml-1 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors font-sans text-[8px] tracking-normal select-none">
@@ -178,6 +209,7 @@ export default function AdminPage() {
         name: editDraft.name.trim(),
         url: editDraft.url.trim(),
         type: editDraft.type,
+        category: editDraft.category,
       }
       const r = await apiFetch(`/api/sources/${id}`, {
         method: "PATCH",
@@ -336,20 +368,65 @@ export default function AdminPage() {
       {/* Tab Content: Sources */}
       {activeTab === "sources" && (
         <section className="space-y-6 animate-fade-in">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="font-sans text-lg text-foreground">News Sources</h2>
               <p className="font-sans text-xs text-muted-foreground">
                 Manage the active RSS feeds and websites scraped hourly.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setShowAdd((v) => !v)}
-              className="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted transition-colors"
-            >
-              {showAdd ? "Cancel" : "Add source"}
-            </button>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filter sources..."
+                className="w-48 sm:w-64 border border-border bg-background px-3 py-1.5 font-mono text-xs outline-none focus:border-foreground"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdd((v) => !v)}
+                className="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted transition-colors shrink-0"
+              >
+                {showAdd ? "Cancel" : "Add source"}
+              </button>
+            </div>
+          </div>
+
+          {/* Category Filter Tabs */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-b border-border pb-3">
+            {CATEGORY_TABS.map((tab) => {
+              const count =
+                tab.value === "all"
+                  ? sources.length
+                  : sources.filter((s) => (s.category ?? "industry-news") === tab.value).length
+              const isActive = selectedCategoryTab === tab.value
+
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setSelectedCategoryTab(tab.value)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-xs rounded transition-colors ${
+                    isActive
+                      ? "bg-foreground text-background font-medium"
+                      : "bg-muted/30 hover:bg-muted text-muted-foreground hover:text-foreground border border-border"
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                  <span
+                    className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${
+                      isActive
+                        ? "bg-background/20 text-background"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
           </div>
 
           {showAdd && (
@@ -377,6 +454,7 @@ export default function AdminPage() {
                 <option value="industry-news">🏢 Industry News</option>
                 <option value="ai-engineering">🛠️ AI Engineering</option>
                 <option value="frontier-research">🧪 Frontier R&D</option>
+                <option value="genmedia">🎨 GenMedia</option>
                 <option value="ecosystem-analysis">📰 Ecosystem Analysis</option>
               </select>
               <button
@@ -389,9 +467,11 @@ export default function AdminPage() {
             </form>
           )}
 
-          {sources.length === 0 ? (
-            <p className="font-mono text-xs text-muted-foreground">
-              No sources yet. Add a URL above to get started.
+          {sortedSources.length === 0 ? (
+            <p className="font-mono text-xs text-muted-foreground py-4">
+              {sources.length === 0
+                ? "No sources yet. Add a URL above to get started."
+                : "No sources found matching the selected category or search filter."}
             </p>
           ) : (
             <div className="border border-border overflow-x-auto">
@@ -416,8 +496,13 @@ export default function AdminPage() {
                     >
                       <span className="flex items-center gap-1">Type {renderSortIcon("type")}</span>
                     </th>
-                    <th className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-36 select-none">
-                      Category
+                    <th
+                      onClick={() => handleSort("category")}
+                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-40 cursor-pointer hover:text-foreground select-none group"
+                    >
+                      <span className="flex items-center gap-1">
+                        Category {renderSortIcon("category")}
+                      </span>
                     </th>
                     <th
                       onClick={() => handleSort("enabled")}
@@ -479,6 +564,7 @@ export default function AdminPage() {
                             <option value="industry-news">Industry News</option>
                             <option value="ai-engineering">AI Engineering</option>
                             <option value="frontier-research">Frontier R&D</option>
+                            <option value="genmedia">GenMedia</option>
                             <option value="ecosystem-analysis">Ecosystem Analysis</option>
                           </select>
                         </td>

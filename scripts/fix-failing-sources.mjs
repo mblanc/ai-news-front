@@ -38,14 +38,20 @@ async function fixSources() {
         feedUrl: FieldValue.delete(),
         updatedAt: new Date(),
       })
-    } else if (name.includes("Techzine") || url.includes("techzine.eu")) {
-      console.log(
-        `Fixing [${name}]: setting type='page', url='https://www.techzine.eu/category/tech-news/ai/'`
-      )
+    } else if (name.includes("DAIR.AI") || url.includes("dair.ai")) {
+      console.log(`Fixing [${name}]: setting type='page', url='https://academy.dair.ai/blog'`)
       await doc.ref.update({
         type: "page",
-        url: "https://www.techzine.eu/category/tech-news/ai/",
+        url: "https://academy.dair.ai/blog",
         feedUrl: FieldValue.delete(),
+        updatedAt: new Date(),
+      })
+    } else if (name.includes("Techzine") || url.includes("techzine.eu")) {
+      console.log(`Fixing [${name}]: setting feedUrl='https://www.techzine.eu/feed/'`)
+      await doc.ref.update({
+        type: "rss",
+        url: "https://www.techzine.eu",
+        feedUrl: "https://www.techzine.eu/feed/",
         updatedAt: new Date(),
       })
     }

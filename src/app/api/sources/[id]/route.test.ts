@@ -93,4 +93,15 @@ describe("PATCH /api/sources/[id]", () => {
     const res = await PATCH(req, { params: Promise.resolve({ id: "123" }) })
     expect(res.status).toBe(200)
   })
+
+  it("updates category successfully", async () => {
+    const req = new NextRequest("http://localhost/api/sources/123", {
+      method: "PATCH",
+      body: JSON.stringify({
+        category: "frontier-research",
+      }),
+    })
+    const res = await PATCH(req, { params: Promise.resolve({ id: "123" }) })
+    expect(res.status).toBe(200)
+  })
 })

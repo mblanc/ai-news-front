@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
       "ai-engineering",
       "ecosystem-analysis",
       "industry-news",
+      "genmedia",
     ]
 
     const scope: DigestScope = scopeParam && validScopes.includes(scopeParam) ? scopeParam : "daily"

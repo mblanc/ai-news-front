@@ -1,12 +1,42 @@
 import { createProductionIngestionPipeline } from "@/lib/ingestion-pipeline"
 import { DigestGenerator, createProductionDigestGenerator } from "@/lib/digest-generator"
-import { db } from "@/lib/firebase"
+import { db, getLatestDigest } from "@/lib/firebase"
 import type { Cluster, Digest, DigestScope, IngestStats, SourceCategory } from "@/lib/types"
 
 export type { IngestStats } from "@/lib/types"
 
 const LOCK_DOC = "_locks/ingest"
 const LOCK_TTL_MS = 15 * 60 * 1000
+
+const CATEGORIES: (SourceCategory | "all")[] = [
+  "all",
+  "frontier-research",
+  "ai-engineering",
+  "ecosystem-analysis",
+  "industry-news",
+  "genmedia",
+]
+
+export function getParisCalendarInfo(date: Date = new Date()) {
+  const dateStr = date.toLocaleDateString("sv-SE", { timeZone: "Europe/Paris" })
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Paris",
+    weekday: "short",
+  }).format(date)
+  const dayOfMonth = parseInt(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Paris",
+      day: "numeric",
+    }).format(date),
+    10
+  )
+
+  return {
+    dateStr,
+    isMonday: weekday === "Mon",
+    isFirstOfMonth: dayOfMonth === 1,
+  }
+}
 
 async function acquireIngestLock(): Promise<boolean> {
   const ref = db.doc(LOCK_DOC)
@@ -26,8 +56,77 @@ async function releaseIngestLock(): Promise<void> {
   await db.doc(LOCK_DOC).delete()
 }
 
+export async function refreshPostIngestDigests(
+  stats: IngestStats,
+  log: (msg: string) => void = console.log
+): Promise<void> {
+  const now = new Date()
+  const { dateStr: todayParisStr, isMonday, isFirstOfMonth } = getParisCalendarInfo(now)
+
+  const hasNewData = stats.clusters_created > 0 || stats.new_articles > 0
+
+  // 1. Daily Digests (Every ingestion run if new articles/clusters ingested)
+  if (hasNewData) {
+    log("Step 10/10 — Refreshing Daily Digests for all categories (Europe/Paris)...")
+    await Promise.all(
+      CATEGORIES.map(async (cat) => {
+        try {
+          const categoryArg = cat === "all" ? undefined : cat
+          await generateAndSaveDigest(log, "daily", categoryArg)
+        } catch (err) {
+          log(`  [Warning] Daily digest failed for ${cat}: ${(err as Error).message}`)
+        }
+      })
+    )
+  }
+
+  // 2. Weekly & Field Overview Digests (Mondays in Paris if not yet generated today in Paris)
+  if (isMonday) {
+    const latestWeekly = await getLatestDigest("weekly")
+    const weeklyDoneTodayInParis =
+      latestWeekly && getParisCalendarInfo(latestWeekly.generatedAt).dateStr === todayParisStr
+
+    if (!weeklyDoneTodayInParis) {
+      log("  Monday (Europe/Paris) — Generating Weekly Digests & Field Overview...")
+      await Promise.all(
+        CATEGORIES.map(async (cat) => {
+          try {
+            const categoryArg = cat === "all" ? undefined : cat
+            await generateAndSaveDigest(log, "weekly", categoryArg)
+            await generateAndSaveDigest(log, "overview", categoryArg)
+          } catch (err) {
+            log(`  [Warning] Weekly/Overview digest failed for ${cat}: ${(err as Error).message}`)
+          }
+        })
+      )
+    }
+  }
+
+  // 3. Monthly Digests (1st of month in Paris if not yet generated today in Paris)
+  if (isFirstOfMonth) {
+    const latestMonthly = await getLatestDigest("monthly")
+    const monthlyDoneTodayInParis =
+      latestMonthly && getParisCalendarInfo(latestMonthly.generatedAt).dateStr === todayParisStr
+
+    if (!monthlyDoneTodayInParis) {
+      log("  1st of Month (Europe/Paris) — Generating Monthly Digests...")
+      await Promise.all(
+        CATEGORIES.map(async (cat) => {
+          try {
+            const categoryArg = cat === "all" ? undefined : cat
+            await generateAndSaveDigest(log, "monthly", categoryArg)
+          } catch (err) {
+            log(`  [Warning] Monthly digest failed for ${cat}: ${(err as Error).message}`)
+          }
+        })
+      )
+    }
+  }
+}
+
 /**
- * Main ingestion entrypoint — delegates to IngestionPipeline with distributed lock.
+ * Main ingestion entrypoint — delegates to IngestionPipeline with distributed lock
+ * and automatically refreshes multi-category digests.
  */
 export async function runIngest(log: (msg: string) => void = console.log): Promise<IngestStats> {
   const start = Date.now()
@@ -51,6 +150,7 @@ export async function runIngest(log: (msg: string) => void = console.log): Promi
     const stats = await pipeline.ingest(undefined, {
       onProgress: (evt) => log(evt.message),
     })
+    await refreshPostIngestDigests(stats, log)
     return stats
   } finally {
     await releaseIngestLock()
@@ -92,7 +192,7 @@ export async function generateAndSaveDigest(
   scope: DigestScope = "daily",
   category?: SourceCategory
 ): Promise<Digest> {
-  log(`Generating digest for scope: ${scope}...`)
+  log(`Generating digest for scope: ${scope}${category ? ` (${category})` : ""}...`)
   const generator = createProductionDigestGenerator()
   const digest = await generator.generateDigest(scope, category)
   log(`Digest generated: "${digest.headline}"`)
@@ -101,39 +201,74 @@ export async function generateAndSaveDigest(
 
 export async function generateWeeklyDigest(
   log: (msg: string) => void = console.log,
-  _force?: boolean
-): Promise<Digest> {
-  return generateAndSaveDigest(log, "weekly")
+  category?: SourceCategory
+): Promise<Digest[]> {
+  if (category) {
+    const d = await generateAndSaveDigest(log, "weekly", category)
+    return [d]
+  }
+  log("Generating Weekly Digests across all categories...")
+  return Promise.all(
+    CATEGORIES.map((cat) => generateAndSaveDigest(log, "weekly", cat === "all" ? undefined : cat))
+  )
 }
 
 export async function generateMonthlyDigest(
   log: (msg: string) => void = console.log,
-  _force?: boolean
-): Promise<Digest> {
-  return generateAndSaveDigest(log, "monthly")
+  category?: SourceCategory
+): Promise<Digest[]> {
+  if (category) {
+    const d = await generateAndSaveDigest(log, "monthly", category)
+    return [d]
+  }
+  log("Generating Monthly Digests across all categories...")
+  return Promise.all(
+    CATEGORIES.map((cat) => generateAndSaveDigest(log, "monthly", cat === "all" ? undefined : cat))
+  )
 }
 
 export async function generateAllTimeOverview(
   log: (msg: string) => void = console.log,
-  _force?: boolean
-): Promise<Digest> {
-  return generateAndSaveDigest(log, "overview")
+  category?: SourceCategory
+): Promise<Digest[]> {
+  if (category) {
+    const d = await generateAndSaveDigest(log, "overview", category)
+    return [d]
+  }
+  log("Generating Overview Digests across all categories...")
+  return Promise.all(
+    CATEGORIES.map((cat) => generateAndSaveDigest(log, "overview", cat === "all" ? undefined : cat))
+  )
 }
 
 export async function seedAllDigests(log: (msg: string) => void = console.log): Promise<void> {
-  log("Seeding all digests...")
-  await generateAndSaveDigest(log, "daily")
-  await generateWeeklyDigest(log)
-  await generateMonthlyDigest(log)
-  await generateAllTimeOverview(log)
-  log("All digests seeded successfully.")
+  log("Seeding all digests across all scopes and categories...")
+  await Promise.all(
+    CATEGORIES.map(async (cat) => {
+      const categoryArg = cat === "all" ? undefined : cat
+      await generateAndSaveDigest(log, "daily", categoryArg)
+      await generateAndSaveDigest(log, "weekly", categoryArg)
+      await generateAndSaveDigest(log, "monthly", categoryArg)
+      await generateAndSaveDigest(log, "overview", categoryArg)
+    })
+  )
+  log("All multi-scope multi-category digests seeded successfully.")
 }
 
 export async function checkAndRefreshMultiScopeDigests(
   log: (msg: string) => void = console.log
 ): Promise<void> {
-  log("Checking multi-scope digests status...")
-  await generateAndSaveDigest(log, "daily")
+  const dummyStats: IngestStats = {
+    duration_ms: 0,
+    sources: 0,
+    urls_found: 0,
+    too_old: 0,
+    new_articles: 1,
+    discarded: 0,
+    clustered: 1,
+    clusters_created: 1,
+  }
+  await refreshPostIngestDigests(dummyStats, log)
 }
 
 export function computeClusterImpactScore(c: Cluster): number {

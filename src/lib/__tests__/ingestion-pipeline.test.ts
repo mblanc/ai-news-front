@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { IngestionPipeline } from "../ingestion-pipeline"
 import type { Source, IngestProgressEvent } from "../types"
+import { sha256 } from "../hash"
 
 describe("IngestionPipeline", () => {
   it("executes ingestion flow with mock adapters and emits progress events", async () => {
@@ -20,15 +21,13 @@ describe("IngestionPipeline", () => {
     const events: IngestProgressEvent[] = []
 
     const mockExtractor = {
-      fetchFeedUrls: vi
-        .fn()
-        .mockResolvedValue([
-          {
-            url: "https://example.com/article-1",
-            title: "New LLM Architecture",
-            pubDate: new Date(),
-          },
-        ]),
+      fetchFeedUrls: vi.fn().mockResolvedValue([
+        {
+          url: "https://example.com/article-1",
+          title: "New LLM Architecture",
+          pubDate: new Date(),
+        },
+      ]),
       scrapeContent: vi.fn().mockResolvedValue({
         title: "New LLM Architecture",
         bodyMd: "# New LLM Architecture\nThis is a deep dive into new transformer architectures.",
@@ -78,6 +77,64 @@ describe("IngestionPipeline", () => {
 
     expect(events.length).toBeGreaterThan(0)
     expect(events[events.length - 1].stage).toBe("complete")
+  })
+
+  it("uses batchCheckUrlHashesExisting when available for fast deduplication", async () => {
+    const mockSources: Source[] = [
+      {
+        id: "source-1",
+        url: "https://example.com/rss",
+        type: "rss",
+        name: "Batch Feed",
+        enabled: true,
+        createdAt: new Date(),
+      },
+    ]
+
+    const url1 = "https://example.com/article-1"
+    const url2 = "https://example.com/article-2"
+    const existingHash = sha256(url1)
+
+    const mockExtractor = {
+      fetchFeedUrls: vi.fn().mockResolvedValue([
+        { url: url1, title: "Article 1", pubDate: new Date() },
+        { url: url2, title: "Article 2", pubDate: new Date() },
+      ]),
+      scrapeContent: vi.fn().mockResolvedValue({
+        title: "Article 2",
+        bodyMd: "Content",
+        excerpt: "Excerpt",
+      }),
+    }
+
+    const mockScorer = { scoreArticle: vi.fn().mockResolvedValue(8) }
+    const mockClusterEngine = {
+      clusterScoredArticle: vi.fn().mockResolvedValue({ clusterId: "c2", isNewCluster: true }),
+    }
+
+    const batchCheckMock = vi.fn().mockResolvedValue(new Set([existingHash]))
+
+    const mockRepository = {
+      getSources: vi.fn().mockResolvedValue(mockSources),
+      isUrlHashExisting: vi.fn(),
+      batchCheckUrlHashesExisting: batchCheckMock,
+      saveArticle: vi.fn().mockResolvedValue(undefined),
+      purgeExpiredArticles: vi.fn().mockResolvedValue(0),
+    }
+
+    const pipeline = new IngestionPipeline({
+      extractor: mockExtractor,
+      scorer: mockScorer,
+      clusterEngine: mockClusterEngine,
+      repository: mockRepository,
+    })
+
+    const stats = await pipeline.run()
+
+    expect(batchCheckMock).toHaveBeenCalledWith([sha256(url1), sha256(url2)])
+    expect(mockRepository.isUrlHashExisting).not.toHaveBeenCalled()
+    expect(stats.urls_found).toBe(2)
+    expect(stats.new_articles).toBe(1)
   })
 
   it("filters out articles with relevance score < 5", async () => {
@@ -133,5 +190,22 @@ describe("IngestionPipeline", () => {
     expect(stats.discarded).toBe(1)
     expect(stats.new_articles).toBe(0)
     expect(mockClusterEngine.clusterScoredArticle).not.toHaveBeenCalled()
+  })
+
+  describe("summariseCluster", () => {
+    it("returns default fallback summary when LLM calls throw", async () => {
+      const { summariseCluster } = await import("../ingestion-pipeline")
+      const result = await summariseCluster([
+        { title: "Test Article Title", excerpt: "Test article excerpt content." },
+      ])
+
+      expect(result.summary).toBe("Test Article Title")
+      expect(result.keyTakeaways).toEqual([])
+      expect(result.whyItMatters).toBe("")
+      expect(result.topicTag).toBe("other")
+      expect(result.sentiment).toBe("neutral")
+      expect(result.entities).toEqual([])
+      expect(result.importanceScore).toBe(5)
+    })
   })
 })

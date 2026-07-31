@@ -31,7 +31,13 @@ const createSchema = z.object({
   url: z.string().url(),
   name: z.string().optional(),
   category: z
-    .enum(["frontier-research", "ai-engineering", "ecosystem-analysis", "industry-news"])
+    .enum([
+      "frontier-research",
+      "ai-engineering",
+      "ecosystem-analysis",
+      "industry-news",
+      "genmedia",
+    ])
     .optional(),
 })
 

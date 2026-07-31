@@ -23,9 +23,9 @@ export async function POST(request: NextRequest) {
     if (scope === "weekly") {
       await generateWeeklyDigest(log)
     } else if (scope === "monthly") {
-      await generateMonthlyDigest(log, true)
+      await generateMonthlyDigest(log)
     } else if (scope === "overview") {
-      await generateAllTimeOverview(log, true)
+      await generateAllTimeOverview(log)
     } else if (scope === "all") {
       await seedAllDigests(log)
     } else {

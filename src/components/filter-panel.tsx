@@ -50,6 +50,7 @@ const CATEGORY_OPTIONS: Array<{ value: SourceCategory | "all"; label: string }> 
   { value: "industry-news", label: "🏢 Industry News" },
   { value: "ai-engineering", label: "🛠️ AI Engineering" },
   { value: "frontier-research", label: "🧪 Frontier R&D" },
+  { value: "genmedia", label: "🎨 GenMedia" },
   { value: "ecosystem-analysis", label: "📰 Ecosystem Analysis" },
 ]
 
