@@ -42,7 +42,6 @@ const CATEGORY_MAP = {
   suno: "genmedia",
   lumalabs: "genmedia",
   blackforestlabs: "genmedia",
-  banodoco: "genmedia",
   synthedia: "genmedia",
   magnific: "genmedia",
   "media & entertainment": "genmedia",
@@ -352,13 +351,6 @@ const TIER_1_ADDITIONS = [
   {
     name: "Black Forest Labs",
     url: "https://blackforestlabs.ai",
-    type: "page",
-    category: "genmedia",
-    enabled: true,
-  },
-  {
-    name: "Banodoco",
-    url: "https://banodoco.ai",
     type: "page",
     category: "genmedia",
     enabled: true,

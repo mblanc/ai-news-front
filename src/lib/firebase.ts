@@ -192,20 +192,79 @@ export async function getLatestDigest(
   }
 }
 
+export async function getDigestManifest(): Promise<
+  Array<{
+    docId: string
+    scope: DigestScope
+    category: SourceCategory | "all"
+    generatedAt: string
+  }>
+> {
+  try {
+    const snapshot = await db.collection("digest").get()
+    return snapshot.docs.map((doc) => {
+      const d = doc.data()
+      let scope: DigestScope = d.scope as DigestScope
+      let category: SourceCategory | "all" = d.category as SourceCategory | "all"
+
+      if (!scope) {
+        if (doc.id === "latest" || doc.id === "daily" || doc.id.startsWith("daily_"))
+          scope = "daily"
+        else if (doc.id === "weekly" || doc.id.startsWith("weekly_")) scope = "weekly"
+        else if (doc.id === "monthly" || doc.id.startsWith("monthly_")) scope = "monthly"
+        else if (doc.id === "overview" || doc.id.startsWith("overview_")) scope = "overview"
+        else scope = "daily"
+      }
+
+      if (!category) {
+        if (doc.id.includes("_")) {
+          category = doc.id.split("_").slice(1).join("_") as SourceCategory
+        } else {
+          category = "all"
+        }
+      }
+
+      const generatedAtDate: Date = d.generatedAt?.toDate?.() ?? new Date()
+
+      return {
+        docId: doc.id,
+        scope,
+        category,
+        generatedAt: generatedAtDate.toISOString(),
+      }
+    })
+  } catch (error) {
+    console.error("Error fetching digest manifest:", error)
+    return []
+  }
+}
+
 export async function updateCluster(
   id: string,
   articles: ClusterArticle[],
   centroid: number[],
   extraFields?: Record<string, unknown>
 ): Promise<void> {
+  const sanitizedArticles: ClusterArticle[] = articles.map((a) => ({
+    id: a.id,
+    title: a.title ?? "",
+    url: a.url ?? "",
+    domain: a.domain ?? "",
+    sourceId: a.sourceId ?? "",
+    sourceName: a.sourceName ?? "",
+    sourceCategory: a.sourceCategory ?? "industry-news",
+    excerpt: (a.excerpt ?? "").slice(0, 500),
+    relevanceScore: typeof a.relevanceScore === "number" ? a.relevanceScore : 5,
+  }))
+
   await db
     .collection("clusters")
     .doc(id)
     .update({
-      articles,
+      articles: sanitizedArticles,
       centroid,
-      articleCount: articles.length,
-      isSingleton: articles.length === 1,
+      articleCount: sanitizedArticles.length,
+      isSingleton: sanitizedArticles.length === 1,
       expireAt: getTtlExpirationDate(),
       updatedAt: FieldValue.serverTimestamp(),
       ...(extraFields ?? {}),

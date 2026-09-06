@@ -45,7 +45,13 @@ next-env.d.ts
 # agents
 .claude
 .agents
+.agent/
+.codex/
+.gemini/
+.impeccable/
+plans/
 
 # antigravity-cli
 .antigravitycli/
+
 

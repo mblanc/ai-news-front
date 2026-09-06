@@ -169,16 +169,18 @@ export function clusterArticles(articles: ArticleWithEmbedding[]): ArticleCluste
   return clusters
 }
 
-export function toClusterArticle(a: ArticleWithEmbedding): ClusterArticle {
+export function toClusterArticle(
+  a: Partial<ArticleWithEmbedding & ClusterArticle> & { id: string }
+): ClusterArticle {
   return {
     id: a.id,
-    title: a.title,
-    url: a.url,
-    domain: a.domain,
+    title: a.title ?? "",
+    url: a.url ?? "",
+    domain: a.domain ?? "",
     sourceId: a.sourceId ?? "",
     sourceName: a.sourceName ?? "",
     sourceCategory: a.sourceCategory ?? "industry-news",
-    excerpt: a.excerpt,
-    relevanceScore: a.relevanceScore,
+    excerpt: (a.excerpt ?? "").slice(0, 500),
+    relevanceScore: typeof a.relevanceScore === "number" ? a.relevanceScore : 5,
   }
 }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import type { Source, SourceType, SourceCategory } from "@/lib/types"
 import type { IngestStats } from "@/lib/ingest"
 import { isIngestErrorLine } from "@/lib/ingest-log"
+import { CATEGORY_ACCENT_CLASSES } from "@/lib/color-tokens"
 
 function apiFetch(path: string, init?: RequestInit) {
   return fetch(path, {
@@ -333,68 +334,75 @@ export default function AdminPage() {
   }
 
   const inputCls =
-    "border border-border bg-background px-2 py-1 font-mono text-xs outline-none focus:border-foreground w-full"
+    "border border-border/80 bg-input px-3 py-1.5 rounded-lg font-sans text-base sm:text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full transition-all h-9 sm:h-7"
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Tabs Header */}
-      <div className="flex border-b border-border">
+      <div className="flex items-center gap-1 p-1 rounded-full bg-muted/60 border border-border/80 w-fit mb-4">
         <button
           type="button"
           onClick={() => setActiveTab("sources")}
-          className={`px-5 py-2.5 font-mono text-xs uppercase tracking-widest border-t border-l border-r -mb-px transition-colors ${
+          className={`px-3.5 py-1.5 sm:py-1 font-sans text-xs font-semibold rounded-full transition-all duration-150 cursor-pointer min-h-[36px] sm:min-h-0 flex items-center ${
             activeTab === "sources"
-              ? "border-border bg-background font-semibold text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
+              ? "bg-background text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
           }`}
         >
-          Sources
+          Sources ({sources.length})
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("ingest")}
-          className={`px-5 py-2.5 font-mono text-xs uppercase tracking-widest border-t border-l border-r -mb-px transition-colors ${
+          className={`px-3.5 py-1.5 sm:py-1 font-sans text-xs font-semibold rounded-full transition-all duration-150 cursor-pointer min-h-[36px] sm:min-h-0 flex items-center ${
             activeTab === "ingest"
-              ? "border-border bg-background font-semibold text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
+              ? "bg-background text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
           }`}
         >
           Ingestion Pipeline
         </button>
       </div>
 
-      {error && <p className="font-mono text-xs text-red-500 mb-4">{error}</p>}
+      {error && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-2.5 text-xs text-destructive mb-4 font-sans">
+          {error}
+        </div>
+      )}
 
       {/* Tab Content: Sources */}
       {activeTab === "sources" && (
-        <section className="space-y-6 animate-fade-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <section className="space-y-4 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="font-sans text-lg text-foreground">News Sources</h2>
-              <p className="font-sans text-xs text-muted-foreground">
+              <h2 className="font-display text-base sm:text-lg font-bold tracking-tight text-foreground">
+                News Sources
+              </h2>
+              <p className="font-sans text-[11px] text-muted-foreground mt-0.5">
                 Manage the active RSS feeds and websites scraped hourly.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Filter sources..."
-                className="w-48 sm:w-64 border border-border bg-background px-3 py-1.5 font-mono text-xs outline-none focus:border-foreground"
+                placeholder="Filter sources…"
+                aria-label="Filter sources by name or URL"
+                className="w-full sm:w-56 border border-border/80 bg-input px-3 py-2 sm:py-1.5 rounded-lg font-sans text-base sm:text-xs h-10 sm:h-8 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
               />
               <button
                 type="button"
                 onClick={() => setShowAdd((v) => !v)}
-                className="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted transition-colors shrink-0"
+                className="rounded-full border border-border bg-card px-3.5 py-2 sm:px-3 sm:py-1.5 font-sans text-xs font-semibold hover:border-primary hover:text-primary transition-all shadow-xs shrink-0 cursor-pointer h-10 sm:h-8 flex items-center justify-center"
               >
-                {showAdd ? "Cancel" : "Add source"}
+                {showAdd ? "Cancel" : "+ Add source"}
               </button>
             </div>
           </div>
 
           {/* Category Filter Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-b border-border pb-3">
+          <div className="flex flex-wrap items-center gap-1.5 pt-0.5 border-b border-border/60 pb-2.5">
             {CATEGORY_TABS.map((tab) => {
               const count =
                 tab.value === "all"
@@ -402,24 +410,25 @@ export default function AdminPage() {
                   : sources.filter((s) => (s.category ?? "industry-news") === tab.value).length
               const isActive = selectedCategoryTab === tab.value
 
+              const accent = CATEGORY_ACCENT_CLASSES[tab.value]
+
               return (
                 <button
                   key={tab.value}
                   type="button"
                   onClick={() => setSelectedCategoryTab(tab.value)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-xs rounded transition-colors ${
+                  className={`flex items-center gap-1 px-3 py-1.5 sm:px-2.5 sm:py-1 font-sans text-xs rounded-full border transition-all duration-150 cursor-pointer min-h-[34px] sm:min-h-0 ${
                     isActive
-                      ? "bg-foreground text-background font-medium"
-                      : "bg-muted/30 hover:bg-muted text-muted-foreground hover:text-foreground border border-border"
+                      ? (accent?.activeTab ??
+                        "bg-primary text-primary-foreground font-medium border-primary shadow-xs")
+                      : "bg-muted/40 hover:bg-muted text-muted-foreground hover:text-foreground border-border/60"
                   }`}
                 >
                   <span>{tab.icon}</span>
                   <span>{tab.label}</span>
                   <span
-                    className={`ml-1 px-1.5 py-0.5 rounded text-[10px] ${
-                      isActive
-                        ? "bg-background/20 text-background"
-                        : "bg-muted text-muted-foreground"
+                    className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      isActive ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
                     }`}
                   >
                     {count}
@@ -432,24 +441,28 @@ export default function AdminPage() {
           {showAdd && (
             <form
               onSubmit={handleAdd}
-              className="flex flex-wrap gap-2 p-4 border border-border bg-muted/10 animate-slide-down"
+              aria-label="Add new news source"
+              className="flex flex-col sm:flex-row flex-wrap gap-2.5 p-3.5 rounded-xl border border-border/80 bg-card shadow-xs animate-slide-down"
             >
               <input
                 ref={urlRef}
                 type="url"
                 required
+                aria-label="Source RSS or Web URL"
                 placeholder="https://example.com/feed.xml"
-                className="flex-1 min-w-[200px] border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-foreground"
+                className="w-full sm:flex-1 min-w-0 sm:min-w-[200px] border border-border/80 bg-input px-3 py-2 sm:py-1.5 rounded-lg font-sans text-base sm:text-xs h-10 sm:h-8 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
               />
               <input
                 ref={nameRef}
                 type="text"
+                aria-label="Source Display Name (optional)"
                 placeholder="Name (auto-detected)"
-                className="w-44 border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-foreground"
+                className="w-full sm:w-44 border border-border/80 bg-input px-3 py-2 sm:py-1.5 rounded-lg font-sans text-base sm:text-xs h-10 sm:h-8 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
               />
               <select
                 ref={categoryRef}
-                className="w-44 border border-border bg-background px-3 py-2 font-mono text-xs outline-none focus:border-foreground"
+                aria-label="Source Category"
+                className="w-full sm:w-44 border border-border/80 bg-input px-3 py-2 sm:py-1.5 rounded-lg font-sans text-sm sm:text-xs h-10 sm:h-8 outline-none focus:border-primary transition-all cursor-pointer"
               >
                 <option value="industry-news">🏢 Industry News</option>
                 <option value="ai-engineering">🛠️ AI Engineering</option>
@@ -460,59 +473,130 @@ export default function AdminPage() {
               <button
                 type="submit"
                 disabled={adding}
-                className="border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted disabled:opacity-50 transition-colors"
+                className="w-full sm:w-auto rounded-full bg-primary text-primary-foreground hover:opacity-95 px-4 py-2 sm:py-1.5 font-sans text-xs font-semibold shadow-xs disabled:opacity-50 transition-all cursor-pointer h-10 sm:h-8 flex items-center justify-center"
               >
-                {adding ? "Saving…" : "Save"}
+                {adding ? "Saving…" : "Save Source"}
               </button>
             </form>
           )}
 
           {sortedSources.length === 0 ? (
-            <p className="font-mono text-xs text-muted-foreground py-4">
+            <p className="font-sans text-xs text-muted-foreground py-4">
               {sources.length === 0
                 ? "No sources yet. Add a URL above to get started."
                 : "No sources found matching the selected category or search filter."}
             </p>
           ) : (
-            <div className="border border-border overflow-x-auto">
-              <table className="w-full border-collapse">
+            <div className="rounded-2xl border border-border/80 bg-card overflow-x-auto shadow-xs overscroll-x-contain">
+              <table className="w-full min-w-[640px] border-collapse">
                 <thead>
-                  <tr className="border-b border-border bg-muted/10">
+                  <tr className="border-b border-border/80 bg-muted/40">
                     <th
-                      onClick={() => handleSort("name")}
-                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-foreground select-none group"
+                      scope="col"
+                      aria-sort={
+                        sortField === "name"
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className="py-2 px-3.5 text-left font-sans text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
                     >
-                      <span className="flex items-center gap-1">Name {renderSortIcon("name")}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleSort("name")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded py-1 min-h-[32px] sm:min-h-0"
+                      >
+                        <span>Name</span>
+                        {renderSortIcon("name")}
+                      </button>
                     </th>
                     <th
-                      onClick={() => handleSort("url")}
-                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-foreground select-none group"
+                      scope="col"
+                      aria-sort={
+                        sortField === "url"
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className="py-2 px-3.5 text-left font-sans text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
                     >
-                      <span className="flex items-center gap-1">URL {renderSortIcon("url")}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleSort("url")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded py-1 min-h-[32px] sm:min-h-0"
+                      >
+                        <span>URL</span>
+                        {renderSortIcon("url")}
+                      </button>
                     </th>
                     <th
-                      onClick={() => handleSort("type")}
-                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-20 cursor-pointer hover:text-foreground select-none group"
+                      scope="col"
+                      aria-sort={
+                        sortField === "type"
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className="py-2 px-3.5 text-left font-sans text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-20"
                     >
-                      <span className="flex items-center gap-1">Type {renderSortIcon("type")}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleSort("type")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded py-1 min-h-[32px] sm:min-h-0"
+                      >
+                        <span>Type</span>
+                        {renderSortIcon("type")}
+                      </button>
                     </th>
                     <th
-                      onClick={() => handleSort("category")}
-                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-40 cursor-pointer hover:text-foreground select-none group"
+                      scope="col"
+                      aria-sort={
+                        sortField === "category"
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className="py-2 px-3.5 text-left font-sans text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-40"
                     >
-                      <span className="flex items-center gap-1">
-                        Category {renderSortIcon("category")}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSort("category")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded py-1 min-h-[32px] sm:min-h-0"
+                      >
+                        <span>Category</span>
+                        {renderSortIcon("category")}
+                      </button>
                     </th>
                     <th
-                      onClick={() => handleSort("enabled")}
-                      className="py-2.5 px-4 text-left font-mono text-[10px] uppercase tracking-widest text-muted-foreground w-16 cursor-pointer hover:text-foreground select-none group"
+                      scope="col"
+                      aria-sort={
+                        sortField === "enabled"
+                          ? sortDirection === "asc"
+                            ? "ascending"
+                            : "descending"
+                          : "none"
+                      }
+                      className="py-2 px-3.5 text-left font-sans text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-16"
                     >
-                      <span className="flex items-center gap-1">
-                        On {renderSortIcon("enabled")}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSort("enabled")}
+                        className="flex items-center gap-1 hover:text-foreground transition-colors cursor-pointer select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 rounded py-1 min-h-[32px] sm:min-h-0"
+                      >
+                        <span>Active</span>
+                        {renderSortIcon("enabled")}
+                      </button>
                     </th>
-                    <th className="py-2.5 px-4 w-28"></th>
+                    <th
+                      scope="col"
+                      className="py-2.5 px-3.5 w-28 text-right font-sans text-[11px] font-semibold text-muted-foreground uppercase tracking-wider"
+                    >
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -520,28 +604,31 @@ export default function AdminPage() {
                     editingId === source.id && editDraft ? (
                       <tr
                         key={source.id}
-                        className="border-b border-border bg-muted/20 last:border-0"
+                        className="border-b border-border/60 bg-muted/20 last:border-0"
                       >
-                        <td className="py-2 px-4">
+                        <td className="py-2 px-3.5">
                           <input
                             className={inputCls}
                             value={editDraft.name}
                             onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
                             placeholder="Name"
+                            aria-label="Edit source name"
                           />
                         </td>
-                        <td className="py-2 px-4">
+                        <td className="py-2 px-3.5">
                           <input
                             className={inputCls}
                             value={editDraft.url}
                             onChange={(e) => setEditDraft({ ...editDraft, url: e.target.value })}
                             placeholder="https://…"
+                            aria-label="Edit source URL"
                           />
                         </td>
-                        <td className="py-2 px-4">
+                        <td className="py-2 px-3.5">
                           <select
                             className={inputCls}
                             value={editDraft.type}
+                            aria-label="Edit source type"
                             onChange={(e) =>
                               setEditDraft({ ...editDraft, type: e.target.value as SourceType })
                             }
@@ -550,10 +637,11 @@ export default function AdminPage() {
                             <option value="page">page</option>
                           </select>
                         </td>
-                        <td className="py-2 px-4">
+                        <td className="py-2 px-3.5">
                           <select
                             className={inputCls}
                             value={editDraft.category ?? "industry-news"}
+                            aria-label="Edit source category"
                             onChange={(e) =>
                               setEditDraft({
                                 ...editDraft,
@@ -568,21 +656,21 @@ export default function AdminPage() {
                             <option value="ecosystem-analysis">Ecosystem Analysis</option>
                           </select>
                         </td>
-                        <td className="py-2 px-4" />
-                        <td className="py-2 px-4">
-                          <div className="flex gap-2">
+                        <td className="py-2 px-3.5" />
+                        <td className="py-2 px-3.5 text-right">
+                          <div className="flex gap-2 justify-end items-center">
                             <button
                               type="button"
                               onClick={() => handleSaveEdit(source.id)}
                               disabled={saving}
-                              className="font-mono text-xs text-foreground hover:underline disabled:opacity-50"
+                              className="font-sans text-xs font-semibold text-primary hover:underline disabled:opacity-50 cursor-pointer min-h-[32px] sm:min-h-0 flex items-center px-1"
                             >
                               {saving ? "…" : "Save"}
                             </button>
                             <button
                               type="button"
                               onClick={cancelEdit}
-                              className="font-mono text-xs text-muted-foreground hover:underline"
+                              className="font-sans text-xs text-muted-foreground hover:underline cursor-pointer min-h-[32px] sm:min-h-0 flex items-center px-1"
                             >
                               Cancel
                             </button>
@@ -592,64 +680,77 @@ export default function AdminPage() {
                     ) : (
                       <tr
                         key={source.id}
-                        className="border-b border-border hover:bg-muted/5 last:border-0"
+                        className="border-b border-border/50 hover:bg-muted/30 transition-colors last:border-0"
                       >
-                        <td className="py-3 px-4 font-sans text-sm text-foreground">
+                        <td className="py-2.5 px-3.5 font-display text-xs font-semibold text-foreground">
                           {source.name}
                         </td>
-                        <td className="py-3 px-4 font-mono text-xs text-muted-foreground max-w-xs truncate">
+                        <td className="py-2.5 px-3.5 font-mono text-[11px] text-muted-foreground max-w-xs truncate">
                           <a
                             href={source.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="hover:underline"
+                            className="hover:underline hover:text-primary transition-colors"
+                            title={source.url}
                           >
                             {source.url}
                           </a>
                         </td>
-                        <td className="py-3 px-4">
-                          <span className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground bg-muted/30">
+                        <td className="py-2.5 px-3.5">
+                          <span
+                            className={`border px-2 py-0.5 rounded-full font-mono text-[9px] uppercase tracking-wider font-semibold ${
+                              source.type === "rss"
+                                ? "bg-primary/10 text-primary border-primary/20"
+                                : "bg-secondary text-secondary-foreground border-border/80"
+                            }`}
+                          >
                             {source.type}
                           </span>
                         </td>
-                        <td className="py-3 px-4">
-                          <span className="border border-border px-2 py-0.5 font-mono text-[10px] text-muted-foreground bg-muted/20 rounded">
+                        <td className="py-2.5 px-3.5">
+                          <span
+                            className={`border px-2.5 py-0.5 rounded-full font-sans text-[11px] ${
+                              CATEGORY_ACCENT_CLASSES[source.category ?? "industry-news"]?.badge ??
+                              "border-border/70 text-foreground bg-muted/40 font-medium"
+                            }`}
+                          >
                             {source.category ?? "industry-news"}
                           </span>
                         </td>
-                        <td className="py-3 px-4">
+                        <td className="py-2.5 px-3.5">
                           <input
                             type="checkbox"
                             checked={source.enabled}
                             onChange={() => handleToggle(source)}
-                            className="cursor-pointer h-3.5 w-3.5 border-border rounded-none text-foreground focus:ring-0 focus:ring-offset-0 accent-foreground"
+                            aria-label={`Toggle active state for ${source.name}`}
+                            className="cursor-pointer h-4 w-4 sm:h-3.5 sm:w-3.5 rounded border-border/80 text-primary focus:ring-2 focus:ring-primary/20 accent-primary"
                           />
                         </td>
-                        <td className="py-3 px-4">
-                          <div className="flex gap-3">
+                        <td className="py-2.5 px-3.5 text-right">
+                          <div className="flex gap-2 items-center justify-end">
                             <button
                               type="button"
                               onClick={() => startEdit(source)}
-                              className="font-mono text-xs text-muted-foreground hover:text-foreground transition-colors"
+                              className="font-sans text-xs text-muted-foreground hover:text-foreground px-2.5 py-1.5 sm:px-2 sm:py-0.5 min-h-[32px] sm:min-h-0 flex items-center rounded-full hover:bg-muted/80 transition-all cursor-pointer"
                             >
                               Edit
                             </button>
                             {deleteConfirm === source.id ? (
-                              <div className="flex gap-2 items-center">
-                                <span className="font-mono text-xs text-muted-foreground">
+                              <div className="flex gap-1.5 items-center bg-destructive/10 border border-destructive/20 px-2 py-0.5 rounded-full min-h-[32px] sm:min-h-0 animate-in fade-in zoom-in-95 duration-150 ease-[cubic-bezier(0.2,0,0,1)]">
+                                <span className="font-sans text-[11px] text-destructive font-medium">
                                   Delete?
                                 </span>
                                 <button
                                   type="button"
                                   onClick={() => handleDelete(source.id)}
-                                  className="font-mono text-xs text-red-500 hover:underline"
+                                  className="font-sans text-xs font-bold text-destructive hover:underline cursor-pointer min-h-[28px] sm:min-h-0 flex items-center"
                                 >
                                   Yes
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setDeleteConfirm(null)}
-                                  className="font-mono text-xs hover:underline"
+                                  className="font-sans text-xs text-muted-foreground hover:text-foreground cursor-pointer min-h-[28px] sm:min-h-0 flex items-center"
                                 >
                                   No
                                 </button>
@@ -658,7 +759,7 @@ export default function AdminPage() {
                               <button
                                 type="button"
                                 onClick={() => setDeleteConfirm(source.id)}
-                                className="font-mono text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                className="font-sans text-xs text-muted-foreground hover:text-destructive px-2.5 py-1.5 sm:px-2 sm:py-0.5 min-h-[32px] sm:min-h-0 flex items-center rounded-full hover:bg-destructive/10 transition-all cursor-pointer"
                               >
                                 Delete
                               </button>
@@ -677,11 +778,13 @@ export default function AdminPage() {
 
       {/* Tab Content: Ingestion */}
       {activeTab === "ingest" && (
-        <section className="space-y-6 animate-fade-in">
-          <div className="flex items-center justify-between">
+        <section className="space-y-4 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="font-sans text-lg text-foreground">Ingestion Pipeline</h2>
-              <p className="font-sans text-xs text-muted-foreground">
+              <h2 className="font-display text-base sm:text-lg font-bold tracking-tight text-foreground">
+                Ingestion Pipeline
+              </h2>
+              <p className="font-sans text-[11px] text-muted-foreground mt-0.5">
                 Manually trigger the 9-step parsing, scraping, embedding, clustering, and
                 summarizing engine.
               </p>
@@ -690,22 +793,24 @@ export default function AdminPage() {
               type="button"
               onClick={handleIngest}
               disabled={ingestState === "running"}
-              className="border border-border px-5 py-2.5 font-mono text-xs uppercase tracking-widest hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="rounded-full bg-primary text-primary-foreground hover:opacity-95 px-4 py-2 sm:py-1.5 font-sans text-xs font-semibold shadow-xs disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shrink-0 min-h-[36px] sm:min-h-0 flex items-center justify-center"
             >
-              {ingestState === "running" ? "Running…" : "Run ingestion"}
+              {ingestState === "running" ? "Running…" : "Run Ingestion"}
             </button>
           </div>
 
           {/* Dedup panel */}
-          <div className="border border-border p-4 flex items-center justify-between gap-4">
+          <div className="rounded-xl border border-border/80 bg-card p-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <p className="font-sans text-sm text-foreground">Deduplicate clusters</p>
-              <p className="font-sans text-xs text-muted-foreground mt-0.5">
+              <p className="font-sans text-xs font-semibold text-foreground">
+                Deduplicate clusters
+              </p>
+              <p className="font-sans text-[11px] text-muted-foreground mt-0.5">
                 Merge clusters with cosine similarity ≥ 0.82, keeping the oldest as canonical.
               </p>
               {dedupMessage && (
                 <p
-                  className={`font-mono text-xs mt-1 ${dedupState === "error" ? "text-red-500" : "text-muted-foreground"}`}
+                  className={`font-sans text-[11px] mt-1 ${dedupState === "error" ? "text-destructive" : "text-muted-foreground"}`}
                 >
                   {dedupMessage}
                 </p>
@@ -715,68 +820,47 @@ export default function AdminPage() {
               type="button"
               onClick={handleDedup}
               disabled={dedupState === "running"}
-              className="shrink-0 border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="shrink-0 rounded-full border border-border/80 bg-card px-3.5 py-2 sm:px-3 sm:py-1.5 font-sans text-xs font-semibold hover:border-primary hover:text-primary transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer min-h-[36px] sm:min-h-0 flex items-center justify-center"
             >
-              {dedupState === "running" ? "Running…" : "Run dedup"}
+              {dedupState === "running" ? "Running…" : "Run Dedup"}
             </button>
           </div>
 
           {/* Digest panel */}
-          <div className="border border-border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="rounded-xl border border-border/80 bg-card p-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <p className="font-sans text-sm text-foreground font-semibold">
+              <p className="font-sans text-xs font-semibold text-foreground">
                 Generate Multi-Scope Digests
               </p>
-              <p className="font-sans text-xs text-muted-foreground mt-0.5">
+              <p className="font-sans text-[11px] text-muted-foreground mt-0.5">
                 Synthesize grounded summaries for Daily, Weekly, Monthly, or All-Time Field
                 Overview.
               </p>
               {digestMessage && (
                 <p
-                  className={`font-mono text-xs mt-1 ${digestState === "error" ? "text-red-500" : "text-green-500"}`}
+                  className={`font-sans text-[11px] mt-1 ${digestState === "error" ? "text-destructive" : "text-success"}`}
                 >
                   {digestMessage}
                 </p>
               )}
             </div>
             <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => handleGenerateDigest("daily")}
-                disabled={digestState === "running"}
-                className="border border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 transition-colors"
-              >
-                Daily
-              </button>
-              <button
-                type="button"
-                onClick={() => handleGenerateDigest("weekly")}
-                disabled={digestState === "running"}
-                className="border border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 transition-colors"
-              >
-                Weekly
-              </button>
-              <button
-                type="button"
-                onClick={() => handleGenerateDigest("monthly")}
-                disabled={digestState === "running"}
-                className="border border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 transition-colors"
-              >
-                Monthly
-              </button>
-              <button
-                type="button"
-                onClick={() => handleGenerateDigest("overview")}
-                disabled={digestState === "running"}
-                className="border border-border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-muted disabled:opacity-50 transition-colors"
-              >
-                Overview
-              </button>
+              {(["daily", "weekly", "monthly", "overview"] as const).map((scope) => (
+                <button
+                  key={scope}
+                  type="button"
+                  onClick={() => handleGenerateDigest(scope)}
+                  disabled={digestState === "running"}
+                  className="rounded-full border border-border/80 bg-card px-3 py-1.5 sm:px-2.5 sm:py-1 font-sans text-xs font-medium hover:border-primary hover:text-primary disabled:opacity-50 transition-all shadow-xs cursor-pointer capitalize min-h-[32px] sm:min-h-0 flex items-center"
+                >
+                  {scope}
+                </button>
+              ))}
               <button
                 type="button"
                 onClick={() => handleGenerateDigest("all")}
                 disabled={digestState === "running"}
-                className="border border-foreground bg-foreground text-background px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider hover:bg-foreground/90 disabled:opacity-50 font-semibold transition-colors"
+                className="rounded-full bg-primary text-primary-foreground hover:opacity-95 px-3.5 py-1.5 sm:px-3 sm:py-1 font-sans text-xs font-semibold disabled:opacity-50 transition-all shadow-xs cursor-pointer min-h-[32px] sm:min-h-0 flex items-center"
               >
                 {digestState === "running" ? "Seeding…" : "Seed All"}
               </button>
@@ -784,16 +868,16 @@ export default function AdminPage() {
           </div>
 
           {/* Email Digest panel */}
-          <div className="border border-border p-4 flex items-center justify-between gap-4">
+          <div className="rounded-xl border border-border/80 bg-card p-3.5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <p className="font-sans text-sm text-foreground">Send Email Digest</p>
-              <p className="font-sans text-xs text-muted-foreground mt-0.5">
+              <p className="font-sans text-xs font-semibold text-foreground">Send Email Digest</p>
+              <p className="font-sans text-[11px] text-muted-foreground mt-0.5">
                 Trigger immediate email dispatch of the latest daily digest and past 24h stories to
                 test recipients.
               </p>
               {emailMessage && (
                 <p
-                  className={`font-mono text-xs mt-1 ${emailState === "error" ? "text-red-500" : "text-green-500"}`}
+                  className={`font-sans text-[11px] mt-1 ${emailState === "error" ? "text-destructive" : "text-success"}`}
                 >
                   {emailMessage}
                 </p>
@@ -803,29 +887,29 @@ export default function AdminPage() {
               type="button"
               onClick={handleSendTestEmail}
               disabled={emailState === "running"}
-              className="shrink-0 border border-border px-4 py-2 font-mono text-xs uppercase tracking-widest hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="shrink-0 rounded-full border border-border/80 bg-card px-3.5 py-2 sm:px-3 sm:py-1.5 font-sans text-xs font-semibold hover:border-primary hover:text-primary transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer min-h-[36px] sm:min-h-0 flex items-center justify-center"
             >
               {emailState === "running" ? "Sending…" : "Send Test Email"}
             </button>
           </div>
 
           {ingestState !== "idle" && (
-            <div className="border border-border bg-card">
-              <div className="border-b border-border px-4 py-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <div className="rounded-xl border border-border/80 bg-card overflow-hidden shadow-xs">
+              <div className="border-b border-border/80 px-3.5 py-2 font-mono text-[9px] uppercase tracking-widest text-muted-foreground bg-muted/30">
                 Console Output
               </div>
               <div
                 ref={logContainerRef}
-                className="h-80 overflow-y-auto p-4 font-mono text-[11px] space-y-1 bg-black text-green-400 selection:bg-green-800 selection:text-white"
+                className="h-64 overflow-y-auto p-3 font-mono text-[11px] space-y-1 bg-black text-green-400 selection:bg-green-800 selection:text-white"
               >
                 {ingestLog.map((line, i) => (
                   <div
                     key={i}
                     className={
                       line.startsWith("Step ")
-                        ? "text-white font-semibold mt-3 first:mt-0 text-xs border-b border-zinc-800 pb-1"
+                        ? "text-white font-semibold mt-2 first:mt-0 text-xs border-b border-zinc-800 pb-0.5"
                         : isIngestErrorLine(line)
-                          ? "bg-red-950/90 text-red-200 px-2 py-0.5 rounded border-l-2 border-red-500 font-medium"
+                          ? "bg-red-950/80 text-red-200 px-2.5 py-1 rounded-md font-medium"
                           : line.startsWith("  Saved:")
                             ? "text-green-300"
                             : line.startsWith("  Discarded")
@@ -842,46 +926,44 @@ export default function AdminPage() {
               </div>
 
               {ingestStats && (
-                <div className="border-t border-border px-4 py-3 bg-muted/10 grid grid-cols-2 sm:grid-cols-6 gap-4 font-mono text-xs text-muted-foreground">
+                <div className="border-t border-border/80 px-3.5 py-2.5 bg-muted/20 grid grid-cols-2 sm:grid-cols-6 gap-3 font-mono text-[11px] text-muted-foreground">
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-muted-foreground/60 uppercase">Sources</span>
-                    <span className="font-semibold text-foreground text-sm mt-0.5">
+                    <span className="text-[9px] text-muted-foreground/60 uppercase">Sources</span>
+                    <span className="font-semibold text-foreground text-xs mt-0.5">
                       {ingestStats.sources}
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-muted-foreground/60 uppercase">
+                    <span className="text-[9px] text-muted-foreground/60 uppercase">
                       URLs Found
                     </span>
-                    <span className="font-semibold text-foreground text-sm mt-0.5">
+                    <span className="font-semibold text-foreground text-xs mt-0.5">
                       {ingestStats.urls_found}
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-muted-foreground/60 uppercase">
+                    <span className="text-[9px] text-muted-foreground/60 uppercase">
                       New Scraped
                     </span>
-                    <span className="font-semibold text-foreground text-sm mt-0.5">
+                    <span className="font-semibold text-foreground text-xs mt-0.5">
                       {ingestStats.new_articles}
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-muted-foreground/60 uppercase">
-                      Discarded
-                    </span>
-                    <span className="font-semibold text-foreground text-sm mt-0.5">
+                    <span className="text-[9px] text-muted-foreground/60 uppercase">Discarded</span>
+                    <span className="font-semibold text-foreground text-xs mt-0.5">
                       {ingestStats.discarded}
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-muted-foreground/60 uppercase">Clusters</span>
-                    <span className="font-semibold text-foreground text-sm mt-0.5">
+                    <span className="text-[9px] text-muted-foreground/60 uppercase">Clusters</span>
+                    <span className="font-semibold text-foreground text-xs mt-0.5">
                       {ingestStats.clusters_created}
                     </span>
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-muted-foreground/60 uppercase">Duration</span>
-                    <span className="font-semibold text-foreground text-sm mt-0.5">
+                    <span className="text-[9px] text-muted-foreground/60 uppercase">Duration</span>
+                    <span className="font-semibold text-foreground text-xs mt-0.5">
                       {(ingestStats.duration_ms / 1000).toFixed(1)}s
                     </span>
                   </div>

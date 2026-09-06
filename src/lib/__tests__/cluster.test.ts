@@ -7,7 +7,7 @@ vi.mock("@google/genai", () => ({
   },
 }))
 
-import { cosineSimilarity, clusterArticles } from "../cluster"
+import { cosineSimilarity, clusterArticles, toClusterArticle } from "../cluster"
 import type { ArticleWithEmbedding } from "../cluster"
 
 describe("cosineSimilarity", () => {
@@ -103,5 +103,56 @@ describe("clusterArticles", () => {
     const clusters = clusterArticles(articles)
     const allIds = clusters.flatMap((c) => c.articles.map((a) => a.id)).sort()
     expect(allIds).toEqual(["a", "b", "c"].sort())
+  })
+})
+
+describe("toClusterArticle", () => {
+  it("strips embedding and bodyMd while keeping only ClusterArticle fields", () => {
+    const bloated = {
+      id: "art-1",
+      title: "Title 1",
+      url: "https://example.com/1",
+      domain: "example.com",
+      sourceId: "src-1",
+      sourceName: "Source 1",
+      sourceCategory: "ai-engineering" as const,
+      excerpt: "Short excerpt",
+      relevanceScore: 8,
+      embedding: [0.1, 0.2, 0.3],
+      bodyMd: "# Very long content".repeat(1000),
+    }
+
+    const sanitized = toClusterArticle(bloated as unknown as ArticleWithEmbedding)
+    expect(sanitized).toEqual({
+      id: "art-1",
+      title: "Title 1",
+      url: "https://example.com/1",
+      domain: "example.com",
+      sourceId: "src-1",
+      sourceName: "Source 1",
+      sourceCategory: "ai-engineering",
+      excerpt: "Short excerpt",
+      relevanceScore: 8,
+    })
+    expect("embedding" in sanitized).toBe(false)
+    expect("bodyMd" in sanitized).toBe(false)
+  })
+
+  it("truncates excessively long excerpts to 500 characters and handles missing fields", () => {
+    const minimal = {
+      id: "art-2",
+      excerpt: "a".repeat(800),
+    }
+
+    const sanitized = toClusterArticle(minimal as unknown as ArticleWithEmbedding)
+    expect(sanitized.id).toBe("art-2")
+    expect(sanitized.title).toBe("")
+    expect(sanitized.url).toBe("")
+    expect(sanitized.domain).toBe("")
+    expect(sanitized.sourceId).toBe("")
+    expect(sanitized.sourceName).toBe("")
+    expect(sanitized.sourceCategory).toBe("industry-news")
+    expect(sanitized.excerpt).toHaveLength(500)
+    expect(sanitized.relevanceScore).toBe(5)
   })
 })

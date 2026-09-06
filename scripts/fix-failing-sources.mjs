@@ -54,6 +54,23 @@ async function fixSources() {
         feedUrl: "https://www.techzine.eu/feed/",
         updatedAt: new Date(),
       })
+    } else if (
+      doc.id === "OraMAVp8hoA4m4vMF9Fj" ||
+      (name === "NVIDIA Research" && url.endsWith("/publication"))
+    ) {
+      console.log(`Deleting duplicate invalid source [${name}] (${doc.id}): ${url}`)
+      await doc.ref.delete()
+    } else if (name.includes("Banodoco") || url.includes("banodoco")) {
+      console.log(`Deleting non-news source [${name}] (${doc.id})`)
+      await doc.ref.delete()
+    } else if (url.includes("artificialintelligence-news.com")) {
+      console.log(`Fixing [${name}]: removing feedUrl and ensuring type='page'`)
+      await doc.ref.update({
+        type: "page",
+        url: "https://www.artificialintelligence-news.com/",
+        feedUrl: FieldValue.delete(),
+        updatedAt: new Date(),
+      })
     }
   }
 

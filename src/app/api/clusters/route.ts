@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { getClusters, getClustersByDateRange } from "@/lib/firebase"
+import { getClusters, getClustersByDateRange, getClusterById } from "@/lib/firebase"
 
 const querySchema = z.object({
+  id: z.string().optional(),
   startDate: z.string().datetime({ offset: true }).optional(),
   endDate: z.string().datetime({ offset: true }).optional(),
 })
@@ -19,7 +20,12 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { startDate, endDate } = result.data
+    const { id, startDate, endDate } = result.data
+
+    if (id) {
+      const cluster = await getClusterById(id)
+      return NextResponse.json(cluster ? [cluster] : [])
+    }
 
     if (startDate && endDate) {
       return NextResponse.json(await getClustersByDateRange(new Date(startDate), new Date(endDate)))

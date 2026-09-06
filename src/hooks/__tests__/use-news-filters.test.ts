@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest"
-import { useClusterFilters, type SourceOption } from "../use-news-filters"
+import {
+  useClusterFilters,
+  type SourceOption,
+  parseNewsUrlParams,
+  buildNewsQueryString,
+  isValidSourceCategory,
+  getInitialNewsUrlParams,
+} from "../use-news-filters"
 import type { Cluster, SourceCategory } from "@/lib/types"
 
 function filter(
@@ -133,5 +140,102 @@ describe("useClusterFilters", () => {
     })
     expect(resSingle).toHaveLength(1)
     expect(resSingle[0].id).toBe("c1")
+  })
+})
+
+describe("News URL Parameters Synchronization", () => {
+  describe("isValidSourceCategory", () => {
+    it("validates known categories", () => {
+      expect(isValidSourceCategory("frontier-research")).toBe(true)
+      expect(isValidSourceCategory("ai-engineering")).toBe(true)
+      expect(isValidSourceCategory("ecosystem-analysis")).toBe(true)
+      expect(isValidSourceCategory("industry-news")).toBe(true)
+      expect(isValidSourceCategory("genmedia")).toBe(true)
+    })
+
+    it("rejects unknown categories", () => {
+      expect(isValidSourceCategory("all")).toBe(false)
+      expect(isValidSourceCategory("invalid-category")).toBe(false)
+      expect(isValidSourceCategory(null)).toBe(false)
+      expect(isValidSourceCategory(undefined)).toBe(false)
+    })
+  })
+
+  describe("parseNewsUrlParams", () => {
+    it("parses valid category, search query, and story id", () => {
+      const parsed = parseNewsUrlParams("?category=ai-engineering&q=transformers&story=cluster-123")
+      expect(parsed).toEqual({
+        category: "ai-engineering",
+        q: "transformers",
+        story: "cluster-123",
+      })
+    })
+
+    it("falls back to all when category is missing or invalid", () => {
+      const parsedMissing = parseNewsUrlParams("?q=claude")
+      expect(parsedMissing.category).toBe("all")
+      expect(parsedMissing.q).toBe("claude")
+      expect(parsedMissing.story).toBeNull()
+
+      const parsedInvalid = parseNewsUrlParams("?category=nonexistent")
+      expect(parsedInvalid.category).toBe("all")
+    })
+
+    it("trims whitespace from queries and stories", () => {
+      const parsed = parseNewsUrlParams("?q=%20%20gemini%20%20&story=%20c456%20")
+      expect(parsed.q).toBe("gemini")
+      expect(parsed.story).toBe("c456")
+    })
+
+    it("handles URLSearchParams object and empty strings", () => {
+      const params = new URLSearchParams()
+      params.set("category", "genmedia")
+      const parsed = parseNewsUrlParams(params)
+      expect(parsed.category).toBe("genmedia")
+      expect(parsed.q).toBe("")
+      expect(parsed.story).toBeNull()
+    })
+  })
+
+  describe("buildNewsQueryString", () => {
+    it("serializes category, search query, and story id", () => {
+      const qs = buildNewsQueryString({
+        category: "frontier-research",
+        q: "deepseek",
+        story: "cluster-789",
+      })
+      expect(qs).toBe("category=frontier-research&q=deepseek&story=cluster-789")
+    })
+
+    it("omits category when set to all or empty", () => {
+      const qs = buildNewsQueryString({
+        category: "all",
+        q: "attention",
+      })
+      expect(qs).toBe("q=attention")
+    })
+
+    it("removes query and story when cleared", () => {
+      const initial = "?category=industry-news&q=old&story=c1"
+      const updated = buildNewsQueryString(
+        {
+          q: "",
+          story: null,
+        },
+        initial
+      )
+      expect(updated).toBe("category=industry-news")
+    })
+  })
+
+  describe("getInitialNewsUrlParams", () => {
+    it("returns safe defaults in node/SSR environment without window", () => {
+      const defaults = getInitialNewsUrlParams()
+      expect(defaults).toEqual({
+        category: "all",
+        q: "",
+        story: null,
+      })
+    })
   })
 })

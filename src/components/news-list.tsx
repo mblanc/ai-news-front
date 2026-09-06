@@ -1,17 +1,26 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { ExternalLink, FileText } from "lucide-react"
+import { useMemo, useState, useEffect, useCallback, memo } from "react"
+import dynamic from "next/dynamic"
+import { ExternalLink, FileText, RotateCcw } from "lucide-react"
 import { DomainIcon } from "@/components/domain-icon"
 import { formatDate, formatDateLong } from "@/lib/format-date"
-import { SummaryModal } from "@/components/summary-modal"
 import type { Cluster } from "@/lib/types"
 import type { FilterOptions } from "@/components/filter-panel"
+import { TOPIC_TAG_CLASSES, SENTIMENT_CONFIG } from "@/lib/color-tokens"
+
+const SummaryModal = dynamic(
+  () => import("@/components/summary-modal").then((m) => m.SummaryModal),
+  { ssr: false }
+)
 
 interface NewsListProps {
   clusters: Cluster[]
   filters: FilterOptions
   searchQuery?: string
+  onResetFilters?: () => void
+  selectedCluster?: Cluster | null
+  onSelectCluster?: (cluster: Cluster | null) => void
 }
 
 const TAG_LABELS: Record<string, string> = {
@@ -28,11 +37,13 @@ const TAG_LABELS: Record<string, string> = {
   other: "Other",
 }
 
-function ClusterCard({
+const ClusterCard = memo(function ClusterCard({
   cluster,
+  isFocused = false,
   onOpenSummary,
 }: {
   cluster: Cluster
+  isFocused?: boolean
   onOpenSummary: (cluster: Cluster) => void
 }) {
   const uniqueArticles = useMemo(() => {
@@ -49,92 +60,204 @@ function ClusterCard({
   const leadTitle = lead?.title ?? "Untitled"
   const summaryText = cluster.summary || lead?.excerpt
 
+  const topicTagClass =
+    TOPIC_TAG_CLASSES[cluster.topicTag] ?? "bg-secondary text-secondary-foreground border-border/80"
+
+  const sentimentKey = cluster.sentiment?.toLowerCase() ?? ""
+  const sentimentConfig = SENTIMENT_CONFIG[sentimentKey] ?? SENTIMENT_CONFIG.neutral
+
   return (
-    <div className="border-b border-border py-4 last:border-b-0">
-      {/* meta row */}
-      <div className="flex items-center gap-3 mb-1.5">
-        <span className="border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground shrink-0">
-          {TAG_LABELS[cluster.topicTag] ?? cluster.topicTag}
-        </span>
-        <span className="font-mono text-[10px] text-muted-foreground">
-          {formatDate(cluster.publishedAt)}
-        </span>
-        {cluster.sentiment && (
-          <span className="font-mono text-[10px] text-muted-foreground uppercase">
-            • {cluster.sentiment}
-          </span>
-        )}
-      </div>
-
-      {/* title row */}
-      <div className="flex items-start justify-between gap-3 group">
-        <div
-          className="flex items-start gap-2 flex-1 cursor-pointer min-w-0"
-          onClick={() => onOpenSummary(cluster)}
-        >
-          {!cluster.isSingleton ? (
-            <div className="flex -space-x-1 shrink-0 mt-1">
-              {uniqueArticles.slice(0, 4).map((a) => (
-                <DomainIcon key={a.id} domain={a.domain} />
-              ))}
-            </div>
-          ) : (
-            <div className="shrink-0 mt-1">
-              <DomainIcon domain={lead?.domain ?? ""} />
-            </div>
+    <article
+      id={`cluster-card-${cluster.id}`}
+      tabIndex={-1}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 140px" }}
+      className={`group relative rounded-xl border p-3.5 sm:p-4 transition-all duration-200 ease-out outline-none focus-visible:outline-none ${
+        isFocused
+          ? "border-primary ring-2 ring-primary/60 bg-surface-container-low shadow-md"
+          : "border-border/70 bg-card shadow-xs hover:shadow-md hover:border-primary/40"
+      }`}
+    >
+      {/* Calm Header Row: Topic Badge & Date (Left), Primary Source Link (Right) */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          {isFocused && (
+            <span
+              title="Currently selected story for keyboard navigation (J/K)"
+              className="inline-flex items-center px-2 py-0.5 rounded-full font-mono text-[10px] font-semibold tracking-wide bg-primary/15 text-primary border border-primary/25 animate-in fade-in"
+            >
+              Active
+            </span>
           )}
-          <div className="flex-1 min-w-0">
-            <h4 className="font-newsreader text-lg sm:text-xl leading-snug text-foreground group-hover:text-muted-foreground transition-colors">
-              {leadTitle}
-            </h4>
-
-            {/* Always display inline summary below the title */}
-            {summaryText && (
-              <p className="font-newsreader text-base text-muted-foreground leading-snug mt-1.5 line-clamp-3">
-                {summaryText}
-              </p>
-            )}
-          </div>
+          <span
+            title={`Topic category: ${TAG_LABELS[cluster.topicTag] ?? cluster.topicTag}`}
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-full font-sans text-[11px] font-medium tracking-wide border ${topicTagClass}`}
+          >
+            {TAG_LABELS[cluster.topicTag] ?? cluster.topicTag}
+          </span>
+          <span
+            title={`Published ${formatDateLong(cluster.publishedAt)}`}
+            className="font-sans text-xs text-muted-foreground"
+          >
+            {formatDate(cluster.publishedAt)}
+          </span>
         </div>
 
-        {/* Direct external link button */}
+        {/* Direct Primary Source Link */}
         {lead?.url && (
           <a
             href={lead.url}
             target="_blank"
             rel="noopener noreferrer"
-            title="Read full original article on external site"
-            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors shrink-0"
+            title={`Read primary source on ${lead?.sourceName || lead?.domain}`}
+            aria-label={`Read primary source in new tab: ${leadTitle} on ${lead?.sourceName || lead?.domain}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/80 px-2 py-1 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            <ExternalLink className="h-4 w-4" />
+            <span className="hidden sm:inline truncate max-w-[140px]">
+              {lead?.sourceName || lead?.domain}
+            </span>
+            <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
           </a>
         )}
       </div>
 
-      {/* Action buttons row */}
-      <div className="mt-3 flex items-center gap-3">
+      {/* Elevated Headline & Summary Excerpt (Primary Visual Anchor) */}
+      <div className="space-y-1.5 my-2">
         <button
           type="button"
           onClick={() => onOpenSummary(cluster)}
-          className="flex items-center gap-1.5 font-sans text-xs font-medium text-foreground bg-secondary/80 hover:bg-secondary border border-border px-2.5 py-1 transition-colors"
+          className="text-left w-full group/title cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 rounded"
         >
-          <FileText className="h-3.5 w-3.5 text-primary" />
-          Summary
+          <h4 className="font-display text-base sm:text-lg font-semibold leading-snug tracking-tight text-foreground group-hover/title:text-primary transition-colors text-balance">
+            {leadTitle}
+          </h4>
         </button>
 
-        {!cluster.isSingleton && (
-          <span className="font-mono text-xs text-muted-foreground">
-            {uniqueArticles.length} sources
-          </span>
+        {summaryText && (
+          <p className="font-sans text-sm text-muted-foreground leading-relaxed line-clamp-2">
+            {summaryText}
+          </p>
         )}
       </div>
-    </div>
-  )
-}
 
-export function NewsList({ clusters, filters, searchQuery }: NewsListProps) {
-  const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null)
+      {/* Calm Metadata Footer: Telemetry & Actions */}
+      <div className="mt-3 pt-2.5 border-t border-border/50 flex flex-wrap items-center justify-between gap-2">
+        {/* Left: Sources Provenance, Sentiment, Impact Rating */}
+        <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+          {/* Source Favicons & Count */}
+          <div className="flex items-center gap-1.5">
+            {!cluster.isSingleton ? (
+              <div className="flex -space-x-1.5 shrink-0">
+                {uniqueArticles.slice(0, 3).map((a) => (
+                  <DomainIcon key={a.id} domain={a.domain} />
+                ))}
+              </div>
+            ) : (
+              <DomainIcon domain={lead?.domain ?? ""} />
+            )}
+            <span
+              title={
+                !cluster.isSingleton
+                  ? `${uniqueArticles.length} unique domain reports consolidated by semantic clustering`
+                  : `Single source reporting: ${lead?.sourceName || lead?.domain}`
+              }
+              className="font-sans text-[11px] font-medium text-foreground/80 cursor-help"
+            >
+              {!cluster.isSingleton
+                ? `${uniqueArticles.length} sources consolidated`
+                : lead?.sourceName || lead?.domain}
+            </span>
+          </div>
+
+          {/* Sentiment Indicator */}
+          {cluster.sentiment && (
+            <>
+              <span className="text-border/80 select-none">•</span>
+              <span
+                title={`Algorithmic sentiment: ${cluster.sentiment.toLowerCase()} consensus`}
+                className="inline-flex items-center gap-1 font-sans text-[11px]"
+              >
+                <span className={`size-1.5 rounded-full shrink-0 ${sentimentConfig.dotColor}`} />
+                <span className="capitalize">{cluster.sentiment}</span>
+              </span>
+            </>
+          )}
+
+          {/* Impact Rating */}
+          {cluster.importanceScore !== undefined && (
+            <>
+              <span className="text-border/80 select-none">•</span>
+              <span
+                title={`Ecosystem impact: evaluated ${cluster.importanceScore}/10 for technical novelty and industry impact`}
+                className="inline-flex items-center gap-0.5 font-mono text-[11px]"
+              >
+                {cluster.importanceScore >= 8 && (
+                  <span className="text-amber-500 font-bold" aria-label="High impact">
+                    ★
+                  </span>
+                )}
+                <span>Impact {cluster.importanceScore}/10</span>
+              </span>
+            </>
+          )}
+        </div>
+
+        {/* Right: Briefing CTA & Keyboard Accelerator */}
+        <div className="flex items-center gap-2 shrink-0">
+          {isFocused && (
+            <span className="hidden sm:inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full animate-in fade-in duration-150">
+              <kbd className="font-sans font-bold">Enter</kbd> to open
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => onOpenSummary(cluster)}
+            title="Read synthesized briefing and key takeaways"
+            aria-label={`Open briefing for story: ${leadTitle}`}
+            className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 hover:bg-primary/20 text-primary font-sans text-xs font-semibold px-3 py-1 transition-all shadow-xs active:scale-[0.98] cursor-pointer min-h-[30px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 shrink-0"
+          >
+            <FileText className="h-3 w-3" />
+            <span>View Summary</span>
+          </button>
+        </div>
+      </div>
+    </article>
+  )
+})
+
+export function NewsList({
+  clusters,
+  filters,
+  searchQuery,
+  onResetFilters,
+  selectedCluster: controlledSelectedCluster,
+  onSelectCluster: controlledOnSelectCluster,
+}: NewsListProps) {
+  const [internalSelectedCluster, setInternalSelectedCluster] = useState<Cluster | null>(null)
+  const isControlled = controlledSelectedCluster !== undefined
+  const selectedCluster = isControlled ? controlledSelectedCluster : internalSelectedCluster
+
+  const setSelectedCluster = useCallback(
+    (cluster: Cluster | null) => {
+      if (controlledOnSelectCluster) {
+        controlledOnSelectCluster(cluster)
+      }
+      if (!isControlled) {
+        setInternalSelectedCluster(cluster)
+      }
+    },
+    [controlledOnSelectCluster, isControlled]
+  )
+
+  const [focusedClusterId, setFocusedClusterId] = useState<string | null>(null)
   const [sortBy] = (filters.sort || "date-desc").split("-") as ["date" | "domain", "asc" | "desc"]
+
+  const handleOpenSummary = useCallback(
+    (cluster: Cluster) => {
+      setSelectedCluster(cluster)
+    },
+    [setSelectedCluster]
+  )
 
   const grouped = useMemo(() => {
     const map: Record<string, Cluster[]> = {}
@@ -161,52 +284,119 @@ export function NewsList({ clusters, filters, searchQuery }: NewsListProps) {
     })
   }, [grouped, filters.sort, sortBy])
 
+  const flatClusters = useMemo(() => {
+    return sectionKeys.flatMap((key) => grouped[key] || [])
+  }, [sectionKeys, grouped])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName || ""
+      const isInputActive = ["INPUT", "TEXTAREA", "SELECT"].includes(activeTag)
+      if (isInputActive || selectedCluster) return
+
+      if (e.key === "j" || (e.key === "ArrowDown" && !e.metaKey && !e.ctrlKey)) {
+        if (!flatClusters.length) return
+        e.preventDefault()
+        setFocusedClusterId((curr) => {
+          const idx = flatClusters.findIndex((c) => c.id === curr)
+          const nextIdx = idx === -1 ? 0 : Math.min(idx + 1, flatClusters.length - 1)
+          const target = flatClusters[nextIdx]
+          const el = document.getElementById(`cluster-card-${target.id}`)
+          el?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+          el?.focus({ preventScroll: true })
+          return target.id
+        })
+      } else if (e.key === "k" || (e.key === "ArrowUp" && !e.metaKey && !e.ctrlKey)) {
+        if (!flatClusters.length) return
+        e.preventDefault()
+        setFocusedClusterId((curr) => {
+          const idx = flatClusters.findIndex((c) => c.id === curr)
+          const prevIdx = idx === -1 ? 0 : Math.max(idx - 1, 0)
+          const target = flatClusters[prevIdx]
+          const el = document.getElementById(`cluster-card-${target.id}`)
+          el?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+          el?.focus({ preventScroll: true })
+          return target.id
+        })
+      } else if (e.key === "Enter" || e.key === "o") {
+        if (focusedClusterId) {
+          const target = flatClusters.find((c) => c.id === focusedClusterId)
+          if (target) {
+            e.preventDefault()
+            setSelectedCluster(target)
+          }
+        }
+      } else if (e.key === "Escape") {
+        if (focusedClusterId) {
+          e.preventDefault()
+          setFocusedClusterId(null)
+        }
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [flatClusters, focusedClusterId, selectedCluster, setSelectedCluster])
+
   if (clusters.length === 0) {
     return (
-      <div className="border border-border py-16 px-8">
-        <p className="font-sans text-lg text-muted-foreground">
-          {searchQuery ? `No results for “${searchQuery}”` : "No stories yet."}
+      <div className="rounded-xl border border-border/80 bg-card py-12 px-6 text-center shadow-xs flex flex-col items-center">
+        <div className="size-10 rounded-full bg-muted/60 flex items-center justify-center text-muted-foreground mb-3 border border-border/60">
+          <FileText className="size-5 opacity-60" />
+        </div>
+        <p className="font-display text-base sm:text-lg font-semibold text-foreground">
+          {searchQuery ? `No results for “${searchQuery}”` : "No stories match active filters"}
         </p>
-        <p className="font-sans text-sm text-muted-foreground mt-2">
+        <p className="font-sans text-xs text-muted-foreground mt-1.5 max-w-md mx-auto">
           {searchQuery
-            ? "Try a shorter or broader search term."
-            : "Run the ingestion pipeline to populate the feed."}
+            ? "Try broadening your search term or clearing filter criteria."
+            : "Try resetting category, source, or date range filters to view latest stories."}
         </p>
+        {onResetFilters && (
+          <button
+            type="button"
+            onClick={onResetFilters}
+            className="mt-4 inline-flex items-center gap-1.5 font-sans text-xs font-semibold text-primary-foreground bg-primary hover:opacity-95 px-3.5 py-1.5 rounded-full transition-all shadow-xs active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          >
+            <RotateCcw className="h-3 w-3" />
+            <span>Reset all filters</span>
+          </button>
+        )}
       </div>
     )
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       {sectionKeys.map((sectionKey) => (
-        <div key={sectionKey}>
-          <div className="border-b border-border pb-2 mb-0">
-            {sortBy === "domain" && (
-              <span className="font-sans text-[10px] uppercase tracking-widest text-muted-foreground block mb-0.5">
-                Source
-              </span>
-            )}
-            <div className="flex items-baseline justify-between">
-              <h3 className="font-newsreader text-xl sm:text-2xl text-foreground leading-tight">
+        <section key={sectionKey} className="space-y-2.5">
+          <div className="flex items-center justify-between pb-1.5 border-b border-border/60">
+            <div>
+              {sortBy === "domain" && (
+                <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground block">
+                  Source Domain
+                </span>
+              )}
+              <h3 className="font-display text-base sm:text-lg font-bold tracking-tight text-foreground leading-tight">
                 {sectionKey}
               </h3>
-              <span className="font-sans text-xs text-muted-foreground">
-                {grouped[sectionKey].length}{" "}
-                {grouped[sectionKey].length === 1 ? "story" : "stories"}
-              </span>
             </div>
+            <span className="rounded-full bg-muted/80 px-2 py-0.5 font-mono text-[11px] text-muted-foreground border border-border/60">
+              {grouped[sectionKey].length} {grouped[sectionKey].length === 1 ? "story" : "stories"}
+            </span>
           </div>
 
-          <div>
+          <div className="grid grid-cols-1 gap-2.5">
             {grouped[sectionKey].map((cluster) => (
               <ClusterCard
                 key={cluster.id}
                 cluster={cluster}
-                onOpenSummary={(c) => setSelectedCluster(c)}
+                isFocused={cluster.id === focusedClusterId}
+                onOpenSummary={handleOpenSummary}
               />
             ))}
           </div>
-        </div>
+        </section>
       ))}
 
       <SummaryModal

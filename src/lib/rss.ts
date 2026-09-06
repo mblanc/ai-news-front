@@ -124,6 +124,7 @@ export function extractArticleLinksFromHtml(html: string, baseUrl: string): RssI
         path === baseHref + "/" ||
         /\/tag\//i.test(path) ||
         /\/category\//i.test(path) ||
+        /\/categories\//i.test(path) ||
         /\/page\/\d+/i.test(path) ||
         /\/author\//i.test(path) ||
         /\/courses/i.test(path) ||
@@ -139,7 +140,7 @@ export function extractArticleLinksFromHtml(html: string, baseUrl: string): RssI
         continue
       }
 
-      if (baseUrl.includes("github.com/trending")) {
+      if (baseUrl.includes("github.com")) {
         const parts = path.split("/").filter(Boolean)
         if (
           parts.length !== 2 ||
@@ -157,7 +158,12 @@ export function extractArticleLinksFromHtml(html: string, baseUrl: string): RssI
             "resources",
             "enterprise",
             "security",
-          ].includes(parts[0])
+            "site",
+            "pricing",
+            "settings",
+            "notifications",
+          ].includes(parts[0]) ||
+          ["stargazers", "forks", "issues", "pulls", "graphs"].includes(parts[1])
         ) {
           continue
         }
@@ -175,6 +181,14 @@ export function extractArticleLinksFromHtml(html: string, baseUrl: string): RssI
         if (!path.startsWith("/the-batch/")) continue
       } else if (baseUrl.includes("ai.meta.com")) {
         if (!path.includes("/blog/")) continue
+      } else if (baseUrl.includes("artificialintelligence-news.com")) {
+        if (
+          !path.startsWith("/news/") ||
+          path.startsWith("/news/event-type/") ||
+          path === "/news/videos" ||
+          path === "/news/"
+        )
+          continue
       }
 
       seen.add(href)
@@ -189,6 +203,31 @@ export function extractArticleLinksFromHtml(html: string, baseUrl: string): RssI
     return items
   } catch {
     return []
+  }
+}
+
+let cloakBrowserQueue = Promise.resolve()
+
+async function fetchWithCloakBrowser(feedUrl: string): Promise<string | null> {
+  let unlock: () => void
+  const prev = cloakBrowserQueue
+  cloakBrowserQueue = new Promise((resolve) => {
+    unlock = resolve
+  })
+  await prev
+
+  try {
+    const { launch } = await import("cloakbrowser")
+    const browser = await launch({ headless: true })
+    const page = await browser.newPage()
+    await page.goto(feedUrl, { waitUntil: "domcontentloaded", timeout: 30000 })
+    const html = await page.content()
+    await browser.close()
+    return html
+  } catch {
+    return null
+  } finally {
+    unlock!()
   }
 }
 
@@ -214,6 +253,12 @@ async function fetchFeedXml(feedUrl: string): Promise<{ text: string; isHtml: bo
     res = await fetch(feedUrl, { headers }).catch(() => null)
   }
 
+  // Retry on 5xx Server Errors (e.g. Google blog RSS transient 500)
+  if (res && res.status >= 500 && res.status < 600) {
+    await sleep(2000)
+    res = await fetch(feedUrl, { headers }).catch(() => null)
+  }
+
   if (res && res.ok) {
     const text = await res.text()
     const trimmedLower = text.trimStart().toLowerCase()
@@ -225,30 +270,20 @@ async function fetchFeedXml(feedUrl: string): Promise<{ text: string; isHtml: bo
 
   // CloakBrowser fallback for bot-protected feeds (403 or persistent 429)
   if (status === 403 || status === 429) {
-    try {
-      const { launch } = await import("cloakbrowser")
-      const browser = await launch({ headless: true })
-      const page = await browser.newPage()
-      await page.goto(feedUrl, { waitUntil: "domcontentloaded", timeout: 20000 })
-      const html = await page.content()
-      await browser.close()
-
-      if (html && html.length > 0) {
-        let text = html
-        const match = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
-        if (match) {
-          text = match[1]
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/&amp;/g, "&")
-            .replace(/&quot;/g, '"')
-        }
-        const trimmedLower = text.trimStart().toLowerCase()
-        const isHtml = trimmedLower.startsWith("<!doctype html") || trimmedLower.startsWith("<html")
-        return { text, isHtml }
+    const html = await fetchWithCloakBrowser(feedUrl)
+    if (html && html.length > 0) {
+      let text = html
+      const match = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
+      if (match) {
+        text = match[1]
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&amp;/g, "&")
+          .replace(/&quot;/g, '"')
       }
-    } catch {
-      // Fall through to Firecrawl or error throw
+      const trimmedLower = text.trimStart().toLowerCase()
+      const isHtml = trimmedLower.startsWith("<!doctype html") || trimmedLower.startsWith("<html")
+      return { text, isHtml }
     }
   }
 

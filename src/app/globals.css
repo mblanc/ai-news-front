@@ -4,83 +4,126 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #f4efe6;
-  --foreground: #1b1816;
-  --card: #ede6d8;
-  --card-foreground: #1b1816;
-  --popover: #f4efe6;
-  --popover-foreground: #1b1816;
-  --primary: #1b1816;
-  --primary-foreground: #f4efe6;
-  --secondary: #ede6d8;
-  --secondary-foreground: #1b1816;
-  --muted: #ede6d8;
-  --muted-foreground: #5a524a;
-  --accent: #e5006d;
-  --accent-foreground: #f4efe6;
-  --destructive: #e5006d;
-  --destructive-foreground: #f4efe6;
-  --border: #1b1816;
-  --input: #f4efe6;
-  --ring: #e5006d;
-  --chart-1: #1b1816;
-  --chart-2: #e5006d;
-  --chart-3: #1f6b3a;
-  --chart-4: #5a524a;
-  --chart-5: #9a8f82;
-  --radius: 0rem;
-  --sidebar: #ede6d8;
-  --sidebar-foreground: #1b1816;
-  --sidebar-primary: #1b1816;
-  --sidebar-primary-foreground: #f4efe6;
-  --sidebar-accent: #e5006d;
-  --sidebar-accent-foreground: #f4efe6;
-  --sidebar-border: #1b1816;
-  --sidebar-ring: #e5006d;
+  /* AM3 Light Mode (GM3 Aurora Living Blues) */
+  --background: #ffffff;
+  --foreground: #1a1c1e;
+  --card: #f1f3f4;
+  --card-foreground: #1a1c1e;
+  --surface-container-low: #f7f9fb;
+  --popover: #ffffff;
+  --popover-foreground: #1a1c1e;
+  --primary: #1473f2;
+  --primary-foreground: #ffffff;
+  --primary-container: #d3e3fd;
+  --on-primary-container: #041e49;
+  --secondary: #e8f0fe;
+  --secondary-foreground: #174ea6;
+  --secondary-container: #c2e7ff;
+  --on-secondary-container: #001d2d;
+  --tertiary: #8b5cf6;
+  --tertiary-foreground: #ffffff;
+  --tertiary-container: #ede9fe;
+  --on-tertiary-container: #2d1b69;
+  --muted: #f1f3f4;
+  --muted-foreground: #52575c;
+  --accent: #1473f2;
+  --accent-foreground: #ffffff;
+  --destructive: #ba1a1a;
+  --destructive-foreground: #ffffff;
+  --border: #e0e2e6;
+  --input: #ffffff;
+  --ring: #1473f2;
+  --success: #1f8a4c;
+  --success-foreground: #ffffff;
+
+  /* AM3 Shape tokens */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 28px;
+  --radius-full: 9999px;
+  --radius: 0.75rem;
+
+  /* AM3 Elevation tokens */
+  --elevation-1: 0px 1px 2px rgba(0, 0, 0, 0.12), 0px 1px 3px 1px rgba(0, 0, 0, 0.08);
+  --elevation-2: 0px 1px 2px rgba(0, 0, 0, 0.12), 0px 2px 6px 2px rgba(0, 0, 0, 0.08);
+  --elevation-3: 0px 1px 3px rgba(0, 0, 0, 0.14), 0px 4px 8px 3px rgba(0, 0, 0, 0.1);
+  --elevation-4: 0px 2px 3px rgba(0, 0, 0, 0.16), 0px 6px 10px 4px rgba(0, 0, 0, 0.12);
+
+  /* AM3 Motion easing */
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emphasized-accel: cubic-bezier(0.3, 0, 0.8, 0.15);
+
+  --sidebar: #f8f9fa;
+  --sidebar-foreground: #1a1c1e;
+  --sidebar-primary: #1473f2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8f0fe;
+  --sidebar-accent-foreground: #174ea6;
+  --sidebar-border: #e0e2e6;
+  --sidebar-ring: #1473f2;
 }
 
 .dark {
-  --background: #f4efe6;
-  --foreground: #1b1816;
-  --card: #ede6d8;
-  --card-foreground: #1b1816;
-  --popover: #f4efe6;
-  --popover-foreground: #1b1816;
-  --primary: #1b1816;
-  --primary-foreground: #f4efe6;
-  --secondary: #ede6d8;
-  --secondary-foreground: #1b1816;
-  --muted: #ede6d8;
-  --muted-foreground: #5a524a;
-  --accent: #e5006d;
-  --accent-foreground: #f4efe6;
-  --destructive: #e5006d;
-  --destructive-foreground: #f4efe6;
-  --border: #1b1816;
-  --input: #f4efe6;
-  --ring: #e5006d;
-  --chart-1: #1b1816;
-  --chart-2: #e5006d;
-  --chart-3: #1f6b3a;
-  --chart-4: #5a524a;
-  --chart-5: #9a8f82;
-  --sidebar: #ede6d8;
-  --sidebar-foreground: #1b1816;
-  --sidebar-primary: #1b1816;
-  --sidebar-primary-foreground: #f4efe6;
-  --sidebar-accent: #e5006d;
-  --sidebar-accent-foreground: #f4efe6;
-  --sidebar-border: #1b1816;
-  --sidebar-ring: #e5006d;
+  /* AM3 Dark Mode */
+  --background: #111318;
+  --foreground: #e2e2e6;
+  --card: #1a1d24;
+  --card-foreground: #e2e2e6;
+  --surface-container-low: #17191e;
+  --popover: #1a1d24;
+  --popover-foreground: #e2e2e6;
+  --primary: #70c4f8;
+  --primary-foreground: #002d6c;
+  --primary-container: #00458f;
+  --on-primary-container: #d3e3fd;
+  --secondary: #1b3b6f;
+  --secondary-foreground: #a5d8ff;
+  --secondary-container: #004c6d;
+  --on-secondary-container: #c2e7ff;
+  --tertiary: #d0bcff;
+  --tertiary-foreground: #381e72;
+  --tertiary-container: #4f378b;
+  --on-tertiary-container: #ede9fe;
+  --muted: #1a1d24;
+  --muted-foreground: #9aa0a6;
+  --accent: #70c4f8;
+  --accent-foreground: #002d6c;
+  --destructive: #ffb4ab;
+  --destructive-foreground: #690005;
+  --border: #30333d;
+  --input: #1a1d24;
+  --ring: #70c4f8;
+  --success: #7ade97;
+  --success-foreground: #003915;
+
+  /* AM3 Elevation tokens for Dark Mode */
+  --elevation-1: 0px 1px 2px rgba(0, 0, 0, 0.4), 0px 1px 3px 1px rgba(0, 0, 0, 0.25);
+  --elevation-2: 0px 1px 2px rgba(0, 0, 0, 0.4), 0px 2px 6px 2px rgba(0, 0, 0, 0.25);
+  --elevation-3: 0px 1px 3px rgba(0, 0, 0, 0.45), 0px 4px 8px 3px rgba(0, 0, 0, 0.3);
+  --elevation-4: 0px 2px 3px rgba(0, 0, 0, 0.5), 0px 6px 10px 4px rgba(0, 0, 0, 0.35);
+
+  --sidebar: #17191e;
+  --sidebar-foreground: #e2e2e6;
+  --sidebar-primary: #70c4f8;
+  --sidebar-primary-foreground: #002d6c;
+  --sidebar-accent: #1b3b6f;
+  --sidebar-accent-foreground: #a5d8ff;
+  --sidebar-border: #30333d;
+  --sidebar-ring: #70c4f8;
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-display), "Google Sans", sans-serif;
+  --font-mono: var(--font-mono), monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-surface-container-low: var(--surface-container-low);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
@@ -96,15 +139,14 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-tertiary: var(--tertiary);
+  --color-tertiary-foreground: var(--tertiary-foreground);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -120,11 +162,47 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased text-sm leading-normal;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
-  .font-newsreader {
-    font-family: var(--font-newsreader), Georgia, "Times New Roman", serif;
+  input,
+  textarea {
+    caret-color: var(--primary);
   }
+  a {
+    text-underline-offset: 3px;
+  }
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+  ::selection {
+    background-color: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .font-display {
+    font-family:
+      var(--font-display),
+      "Google Sans",
+      -apple-system,
+      BlinkMacSystemFont,
+      sans-serif;
+  }
+}
+
+/* Custom subtle compact scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -133,6 +211,14 @@
   *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+    transform: none !important;
+  }
+  /* Preserve gentle opacity and color transitions to maintain clear feedback for state changes */
+  *,
+  *::before,
+  *::after {
+    transition-property: background-color, border-color, color, fill, stroke, opacity !important;
+    transition-duration: 100ms !important;
   }
 }

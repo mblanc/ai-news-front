@@ -1,360 +1,417 @@
-# Design System Inspired by Printing Press
+# Design System: Agentic Material 3 (AM3)
 
 ## 1. Visual Theme & Atmosphere
 
-The Printing Press design system embodies a sophisticated, editorial aesthetic rooted in classical typography and minimalist print design. It evokes the warmth and intentionality of letterpress printing combined with contemporary digital clarity. The palette is deliberately restrained—dominated by warm neutrals and deep charcoals—creating an atmosphere of intellectual elegance and accessibility. This is a design language for developers and creators who value precision, clarity, and the beauty of functional simplicity. Every element speaks with purpose; there is no visual noise, only deliberate contrast and careful hierarchy.
-
-**Key Characteristics**
-
-- Warm, paper-like neutral palette with minimal color saturation
-- Sharp, unadorned geometry with zero border radius (hard edges throughout)
-- Display serif typography (Newsreader) paired with clean sans-serif (Geist)
-- Monospaced code font (Geist Mono) for technical clarity
-- Generous whitespace and breathing room between elements
-- Single-pixel borders define container boundaries
-- Accents of deep forest green and vibrant magenta for semantic meaning
-- Print-inspired, editorial layout with strong typographic hierarchy
-
-## 2. Color Palette & Roles
-
-### Primary
-
-- **Deep Charcoal** (`#1B1816`): Primary text color, borders, and structural elements. The workhorse color used throughout for maximum contrast and legibility on light backgrounds.
-- **Warm Cream** (`#F4EFE6`): Primary background color for page surfaces, creating a paper-like, approachable canvas.
-
-### Accent Colors
-
-- **Magenta Signal** (`#E5006D`): Accent for highlights, decorative elements, call-outs, and interactive focus states. Commands attention without dominating the visual hierarchy.
-- **Forest Green** (`#1F6B3A`): Semantic indicator for active states, success, or positive indicators (e.g., "PRESS IS OPEN" status).
-
-### Interactive
-
-- **Light Cream Surface** (`#EDE6D8`): Interactive component backgrounds (buttons, cards, input surfaces). Provides subtle visual separation while maintaining warmth.
-- **Button Border & Text** (`#1B1816`): Ensures readable, crisp interaction elements with strong contrast.
-
-### Neutral Scale
-
-- **Medium Taupe** (`#5A524A`): Secondary text color, metadata, smaller UI text, and de-emphasized labels. Adds visual hierarchy without losing legibility.
-- **Light Taupe** (`#9A8F82`): Tertiary text for captions, hints, and smallest UI text. Used sparingly to maintain readability.
-
-### Surface & Borders
-
-- **Card Surface** (`#EDE6D8`): Container and card backgrounds with a warm, inviting tone.
-- **Border Color** (`#1B1816`): Single-pixel borders throughout, creating crisp definition and graphic quality.
-
-## 3. Typography Rules
-
-### Font Family
-
-**Primary Display & Headings:** Newsreader (serif, classic editorial feel)
-
-- Fallback stack: `'Newsreader', 'Georgia', 'Times New Roman', serif`
-
-**Body & UI:** Geist (sans-serif, modern and clean)
-
-- Fallback stack: `'Geist', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Helvetica Neue', sans-serif`
-
-**Code & Technical:** Geist Mono (monospace, for code and technical content)
-
-- Fallback stack: `'Geist Mono', 'Courier New', 'Courier', monospace`
-
-### Hierarchy
-
-| Role               | Font       | Size | Weight | Line Height | Letter Spacing | Notes                                  |
-| ------------------ | ---------- | ---- | ------ | ----------- | -------------- | -------------------------------------- |
-| Display / H1       | Newsreader | 56px | 400    | 58.8px      | Normal         | Hero headlines, main page title        |
-| Heading / H2       | Newsreader | 36px | 400    | 37.8px      | Normal         | Section headers, major divisions       |
-| Subheading / H3    | Newsreader | 32px | 400    | 33.6px      | Normal         | Subsection titles, card headers        |
-| Body Text          | Geist      | 16px | 400    | 24.8px      | Normal         | Primary paragraph content              |
-| Span / Lead Text   | Newsreader | 18px | 400    | 18.9px      | Normal         | Emphasized body copy, pull quotes      |
-| Small Text / UI    | Newsreader | 11px | 400    | 17.05px     | Normal         | Buttons, badges, UI labels             |
-| Metadata / Caption | Geist      | 14px | 400    | 21.7px      | Normal         | Secondary labels, navigation, metadata |
-| Code / Terminal    | Geist Mono | 14px | 400    | 21px        | Normal         | Code blocks, command examples          |
-
-### Principles
-
-- **Serif-first authority:** Display hierarchy uses Newsreader serif for editorial gravitas and credibility.
-- **Contrast through scale:** Font size, not weight, drives hierarchy. All fonts remain at weight 400 for consistent openness.
-- **Generous line height:** 1.4–1.5 multiplier for optimal readability and breathing room.
-- **Monospace for precision:** Code and technical examples use Geist Mono to signal functionality and accuracy.
-- **No font-weight variation:** The design relies on size and color differentiation rather than bold weights, maintaining visual lightness.
-
-## 4. Component Stylings
-
-### Buttons
-
-**Primary Button (Standard)**
-
-- Background: `#F4EFE6`
-- Text Color: `#1B1816`
-- Font: Newsreader, 11px, weight 400
-- Padding: `2px 16px`
-- Border: `1px solid #1B1816`
-- Border Radius: `0px`
-- Line Height: `17.05px`
-- Height: `23px` (intrinsic)
-- Hover State: Background `#EDE6D8`, maintain border
-
-**Navigation Button (Full-width, minimal style)**
-
-- Background: Transparent
-- Text Color: `#1B1816`
-- Font: Geist, 16px, weight 400
-- Padding: `8px 0px`
-- Border: None
-- Line Height: `24.8px`
-- Height: `48px`
-- Hover State: Text color shifts to `#5A524A`
-
-**Icon / Utility Button**
-
-- Background: `#F4EFE6`
-- Text Color: `#1B1816`
-- Font: Geist Mono, 12px, weight 400
-- Padding: `0px`
-- Border: `1px solid #1B1816`
-- Border Radius: `0px`
-- Width: `32px`, Height: `32px`
-- Hover State: Background `#EDE6D8`
-
-### Cards & Containers
-
-**Card (Standard Content Container)**
-
-- Background: `#EDE6D8`
-- Text Color: `#1B1816`
-- Font: Geist, 16px, weight 400
-- Padding: `40px`
-- Border: `1px solid #1B1816`
-- Border Radius: `0px`
-- Line Height: `24.8px`
-- Hover State: Subtle shadow or background shift to `#F4EFE6`
-
-**Navigation Bar / Header Container**
-
-- Background: `#EDE6D8`
-- Text Color: `#1B1816`
-- Font: Geist, 16px, weight 400
-- Padding: `6px 24px`
-- Border: `1px solid #1B1816`
-- Border Radius: `0px`
-- Height: `38px` (intrinsic)
-- Line Height: `24.8px`
-
-### Inputs & Forms
-
-**Text Input / Form Field**
-
-- Background: `#F4EFE6`
-- Text Color: `#1B1816`
-- Font: Geist, 14px, weight 400
-- Padding: `8px 12px`
-- Border: `1px solid #1B1816`
-- Border Radius: `0px`
-- Focus State: Border color shifts to `#E5006D`, background remains `#F4EFE6`
-- Line Height: `21.7px`
-
-**Code Input / Monospace Field**
-
-- Background: `#F4EFE6`
-- Text Color: `#1B1816`
-- Font: Geist Mono, 14px, weight 400
-- Padding: `12px`
-- Border: `1px solid #1B1816`
-- Border Radius: `0px`
-- Focus State: Border color to `#E5006D`
-- Line Height: `21px`
-
-### Navigation
-
-**Link (Standard, primary color)**
-
-- Background: Transparent
-- Text Color: `#1B1816`
-- Font: Newsreader, 18px, weight 400
-- Padding: None
-- Border: None
-- Line Height: `18.9px`
-- Hover State: Text color shifts to `#5A524A`, optional underline
-
-**Link (Secondary, smaller)**
-
-- Background: Transparent
-- Text Color: `#5A524A`
-- Font: Geist, 14px, weight 400
-- Padding: None
-- Border: None
-- Line Height: `21.7px`
-- Hover State: Text color shifts to `#1B1816`
-
-### Badges & Status Indicators
-
-**Status Badge (Active)**
-
-- Background: `#1F6B3A` (forest green)
-- Text Color: `#F4EFE6`
-- Font: Geist, 11px, weight 400
-- Padding: `4px 8px`
-- Border: None
-- Border Radius: `0px`
-
-**Accent Badge**
-
-- Background: Transparent
-- Text Color: `#E5006D`
-- Font: Geist, 11px, weight 400
-- Padding: `4px 8px`
-- Border: `1px solid #E5006D`
-- Border Radius: `0px`
-
-## 5. Layout Principles
-
-### Spacing System
-
-**Base Unit:** 8px
-
-**Spacing Scale:**
-
-- **Micro:** `8px` — Padding inside small components, tight grouping
-- **Extra Small:** `16px` — Padding in buttons, labels, small gaps
-- **Small:** `24px` — Space between form fields, between UI elements
-- **Medium:** `32px` — Gap between related sections, moderate breathing room
-- **Large:** `40px` — Padding inside cards and containers
-- **Extra Large:** `48px` — Space between major content blocks
-- **XXL:** `60px` — Margin between page sections
-- **XXXL:** `80px` — Margin for major section breaks
-- **Extreme:** `96px` — Top/bottom margins for hero sections
-
-**Usage Context:**
-
-- `8px` for button padding and compact component spacing
-- `16px` for input padding and form field separation
-- `24px` for navigation and small gaps between UI elements
-- `40px` for card padding and contained content blocks
-- `60px–96px` for whitespace between major page sections (generous breathing room)
-
-### Grid & Container
-
-**Max Width:** 1224px (primary content container)
-
-**Column Strategy:**
-
-- Single-column layout with flexible alignment
-- Cards and containers use full width up to max-width constraint
-- Sidebar/complementary content can sit adjacent at larger viewports but stacks on smaller screens
-
-**Section Patterns:**
-
-- Hero section with max-width content, centered or left-aligned
-- Content cards in a flexible grid (1–2 columns depending on viewport)
-- Navigation bar fixed or sticky at top with full-width background
-- Footer with full-width background, centered text content
-
-### Whitespace Philosophy
-
-Whitespace is an active design element, not negative space. Generous margins and padding create breathing room, reduce cognitive load, and emphasize the editorial quality of the layout. Sections are separated by substantial vertical space (60–96px), and within containers, content has ample internal padding (`40px` or more). This philosophy extends to typography: larger line heights and spacing between paragraphs reinforce clarity and elegance.
-
-### Border Radius Scale
-
-- **Sharp Edges:** `0px` — All components use zero radius for a crisp, print-like quality. No rounded corners throughout the system.
-
-_Note:_ The design system intentionally rejects border radius entirely, favoring hard geometric lines that evoke traditional print and technical design aesthetics.
-
-## 6. Depth & Elevation
-
-| Level              | Treatment                                        | Use                                       |
-| ------------------ | ------------------------------------------------ | ----------------------------------------- |
-| Ground (Level 0)   | No shadow, flat surface                          | Page background, base content layer       |
-| Raised (Level 1)   | Optional: `0px 1px 2px rgba(27, 24, 22, 0.05)`   | Cards on light backgrounds, subtle lift   |
-| Floating (Level 2) | Optional: `0px 4px 8px rgba(27, 24, 22, 0.1)`    | Modals, popovers, interactive overlays    |
-| Modal (Level 3)    | Optional: `0px 12px 24px rgba(27, 24, 22, 0.15)` | Full-page overlays, critical interactions |
-
-**Shadow Philosophy:**
-
-The Printing Press design system favors minimal to no shadows by default. The aesthetic is rooted in print design, where elevation is conveyed through borders, contrast, and layout rather than photorealistic depth. When shadows are used (for interactive states or critical emphasis), they remain subtle and muted. A single-pixel border is the primary method for defining separation and containment. Shadows, if employed, should use the deep charcoal color (`#1B1816`) at very low opacity (`0.05–0.15`) to maintain the warm, approachable tone. This restraint preserves visual clarity and reinforces the editorial, intentional quality of the design.
-
-## 7. Do's and Don'ts
+The **Agentic Material 3 (AM3)** design system is an expressive, next-generation design language and generative UI framework developed by Google Applied Moonshots for AI agents, intelligence dashboards, and conversational workspaces.
+
+AM3 evolves classical Material Design 3 into an agentic paradigm: interfaces are dynamic, responsive to LLM reasoning, highly structured, and grounded in mathematically harmonious perceptual color science (HCT — Hue, Chroma, Tone). The visual atmosphere combines Google's clean enterprise baseline with luminous **Aurora Living Energy** accents—evoking intelligence, algorithmic precision, and continuous real-time synthesis.
+
+### Key Characteristics
+
+- **HCT Color Architecture:** Mathematically derived tonal palettes guaranteeing accessible contrast ratios (WCAG AA/AAA) across both Light and Dark themes.
+- **Aurora Living Blues Spectrum:** High-energy Electric Azure (`#1473F2`), Sky Aqua (`#38B6FF`), Deep Cobalt (`#0077B6`), and Cosmic Violet (`#8B5CF6`) for AI reasoning and telemetry.
+- **Expressive Geometry & Rounded Contours:** Systematic corner radii ranging from subtle micro-rounding (`4px`) up to fully pill-shaped contours (`9999px`), replacing rigid sharp corners with organic, approachable containment.
+- **Dual-Layer Elevation Shadows:** Physically modeled ambient and key drop shadows blended with tonal surface tinting overlays.
+- **Dual-Mode Theming:** First-class parity between Light (`data-theme="light"`) and Dark (`data-theme="dark"`) modes.
+- **Physics-Based Motion:** Expressive cubic bezier easing curves (Emphasized Decelerate, Accelerate, Standard) and 10 duration steps (`short1` to `long2`).
+- **Agentic Telemetry & Lifecycle Visibility:** Specialized componentry for AI pipeline stages, scoring indicators, confidence metrics, and cluster summaries.
+
+---
+
+## 2. Color Palette & Dynamic Theming
+
+AM3 color tokens are generated using **Material Color Utilities (MCU)** within the perceptual **HCT (Hue, Chroma, Tone)** color space. Contrast is determined purely by the delta in Tone values, guaranteeing accessible contrast regardless of Hue.
+
+### 14-Step Perceptual Tonal Scale
+
+Every color family resolves across a 14-step tonal ladder:
+`Tone 0` (Pure Black), `Tone 10`, `Tone 20`, `Tone 30`, `Tone 40`, `Tone 50`, `Tone 60`, `Tone 70`, `Tone 80`, `Tone 90`, `Tone 95`, `Tone 98`, `Tone 99`, `Tone 100` (Pure White).
+
+### Semantic System Color Roles
+
+| Role                        | Light Mode Value | Dark Mode Value | Semantic Description & Usage                                        |
+| :-------------------------- | :--------------- | :-------------- | :------------------------------------------------------------------ |
+| `primary`                   | `#1473F2`        | `#70C4F8`       | High-emphasis interactive elements, primary CTAs, active selections |
+| `on-primary`                | `#FFFFFF`        | `#002D6C`       | Text and icons placed on top of `primary` containers                |
+| `primary-container`         | `#D3E3FD`        | `#00458F`       | Prominent container fills, active navigation items, selected cards  |
+| `on-primary-container`      | `#041E49`        | `#D3E3FD`       | Content and typography rendered inside `primary-container`          |
+| `secondary`                 | `#38B6FF`        | `#A5D8FF`       | Secondary navigation badges, auxiliary actions, progress indicators |
+| `on-secondary`              | `#003549`        | `#003549`       | Content rendered on top of `secondary` elements                     |
+| `secondary-container`       | `#C2E7FF`        | `#004C6D`       | Subdued secondary containers, filter chip backgrounds               |
+| `on-secondary-container`    | `#001D2D`        | `#C2E7FF`       | Text and icons on `secondary-container`                             |
+| `tertiary`                  | `#8B5CF6`        | `#D0BCFF`       | **AI reasoning**, semantic cluster tags, LLM synthesis indicators   |
+| `on-tertiary`               | `#FFFFFF`        | `#381E72`       | Text and icons on `tertiary` surfaces                               |
+| `tertiary-container`        | `#EDE9FE`        | `#4F378B`       | AI insight callouts, relevance score badges, cluster pill fills     |
+| `on-tertiary-container`     | `#2D1B69`        | `#EDE9FE`       | Content inside AI tertiary containers                               |
+| `surface`                   | `#FFFFFF`        | `#111318`       | Base page canvas background                                         |
+| `on-surface`                | `#1A1C1E`        | `#E2E2E6`       | Primary reading typography and core icons                           |
+| `surface-variant`           | `#E1E2EC`        | `#44474F`       | Alternative surface fills, subtle grouping containers               |
+| `on-surface-variant`        | `#44474F`        | `#C4C6D0`       | Secondary metadata, dates, article source labels, captions          |
+| `surface-container-lowest`  | `#FFFFFF`        | `#0C0E12`       | Deepest recessed container underlay                                 |
+| `surface-container-low`     | `#F7F9FB`        | `#17191E`       | Subtly distinct container background below standard cards           |
+| `surface-container`         | `#F1F3F4`        | `#1A1D24`       | Default card, dialog, panel, and feed container background          |
+| `surface-container-high`    | `#E9EBEE`        | `#252830`       | Elevated hover cards, dropdown menus, popovers                      |
+| `surface-container-highest` | `#E1E3E6`        | `#30333D`       | Active modal surfaces, search bars, inputs                          |
+| `outline`                   | `#74777F`        | `#8E9099`       | Component borders, card outlines, structural dividers               |
+| `outline-variant`           | `#C4C6D0`        | `#44474F`       | Soft decorative borders, table dividers, subtle rules               |
+| `error`                     | `#BA1A1A`        | `#FFB4AB`       | Error messages, failed ingestion status, broken feeds               |
+| `on-error`                  | `#FFFFFF`        | `#690005`       | Text rendered on error surfaces                                     |
+| `success`                   | `#1F8A4C`        | `#7ADE97`       | Clustered status, healthy feeds, completed pipeline steps           |
+
+### Aurora Living Energy Spectrum
+
+For AI synthesis moments, dynamic gradients, and live status meshes:
+
+- **Electric Azure (`energy-mid`):** `#1473F2` — Primary interactive brand spark and focused CTA glow.
+- **Google Blue (`energy-end`):** `#1A73E8` — Enterprise baseline, navigation anchors, structural coherence.
+- **Sky Aqua (`energy-glow`):** `#38B6FF` (Light) / `#70C4F8` (Dark) — Telemetry pulses, embedding similarity highlights.
+- **Deep Cobalt (`energy-depth`):** `#0077B6` / `#1B3B6F` — Depth accents, dark-mode underlays, elevation shadow tints.
+- **Cosmic Violet (`energy-complement`):** `#8B5CF6` (Light) / `#D0BCFF` (Dark) — LLM reasoning, cluster centroids, semantic tags.
+
+---
+
+## 3. Typography Rules & Type Scales
+
+AM3 typography is built upon Google's modern geometric humanist type hierarchy. For open web implementations where proprietary Google Sans packages may not be bundled, high-fidelity Google Fonts alternatives are paired with systematic fallbacks.
+
+### Font Family Stacks
+
+1. **Brand & Display (Headings, Heroes, Top Bar Titles):**
+   - **AM3 Canonical:** `Google Sans`
+   - **Closest Available Google Font:** `Plus Jakarta Sans` (or `Inter`)
+   - **CSS Font Stack:** `'Plus Jakarta Sans', 'Google Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
+
+2. **Body & Text (Content, Summaries, Form Controls, Tables):**
+   - **AM3 Canonical:** `Google Sans Text`
+   - **Closest Available Google Font:** `Inter` (or `Plus Jakarta Sans`, `Roboto`)
+   - **CSS Font Stack:** `'Inter', 'Google Sans Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`
+
+3. **Code & Monospace (Cluster IDs, Hashes, Prompts, Terminal Logs):**
+   - **AM3 Canonical:** `Google Sans Mono`
+   - **Closest Available Google Font:** `JetBrains Mono` (or `Roboto Mono`)
+   - **CSS Font Stack:** `'JetBrains Mono', 'Google Sans Mono', 'Roboto Mono', ui-monospace, Menlo, monospace`
+
+### Google Fonts Import Recommendation
+
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+  rel="stylesheet"
+/>
+```
+
+### 15 Standard Type Scales
+
+| Scale Name        | Font Family | Size | Line Height | Weight | Tracking | Usage in `ai-news-front`                     |
+| :---------------- | :---------- | :--- | :---------- | :----- | :------- | :------------------------------------------- |
+| `display-large`   | Display     | 57px | 64px        | 400    | -0.25px  | Hero landing headlines, milestone banners    |
+| `display-medium`  | Display     | 45px | 52px        | 400    | 0.00px   | Major section hero titles                    |
+| `display-small`   | Display     | 36px | 44px        | 400    | 0.00px   | Feed overview headers, analytics highlights  |
+| `headline-large`  | Display     | 32px | 40px        | 400    | 0.00px   | Top-level cluster story headlines            |
+| `headline-medium` | Display     | 28px | 36px        | 400    | 0.00px   | Article detail page titles, admin view heads |
+| `headline-small`  | Display     | 24px | 32px        | 400    | 0.00px   | Cluster group cards, section subtitles       |
+| `title-large`     | Display     | 22px | 28px        | 400    | 0.00px   | News card title, modal dialog headers        |
+| `title-medium`    | Text        | 16px | 24px        | 500    | +0.15px  | Subsection headers, list item headlines      |
+| `title-small`     | Text        | 14px | 20px        | 500    | +0.10px  | Card subheaders, table column headers        |
+| `body-large`      | Text        | 16px | 24px        | 400    | +0.50px  | LLM cluster synthesis, editorial summaries   |
+| `body-medium`     | Text        | 14px | 20px        | 400    | +0.25px  | Article snippet excerpt, feed description    |
+| `body-small`      | Text        | 12px | 16px        | 400    | +0.40px  | Timestamps, author bylines, source URLs      |
+| `label-large`     | Text        | 14px | 20px        | 500    | +0.10px  | Action button labels, tabs, top nav links    |
+| `label-medium`    | Text        | 12px | 16px        | 500    | +0.50px  | Filter chip labels, status badges, counters  |
+| `label-small`     | Text        | 11px | 16px        | 500    | +0.50px  | Similarity scores, tags, token count pills   |
+
+---
+
+## 4. Shape Tokens & Corner Radii
+
+AM3 utilizes corner geometry to establish relationship, tactile containment, and component hierarchy across 7 standardized tokens.
+
+| Token               | Radius Value | Tailwind Class | Component Usage                                                 |
+| :------------------ | :----------- | :------------- | :-------------------------------------------------------------- |
+| `shape-none`        | `0px`        | `rounded-none` | Full-bleed bottom sheets, divider rules, edge-to-edge canvas    |
+| `shape-extra-small` | `4px`        | `rounded-sm`   | Code syntax containers, inline tooltips, thumbnail media badges |
+| `shape-small`       | `8px`        | `rounded-lg`   | Standard action buttons, snackbars, form fields, text inputs    |
+| `shape-medium`      | `12px`       | `rounded-xl`   | Standard news cards, metric tiles, dropdown menus, feed cards   |
+| `shape-large`       | `16px`       | `rounded-2xl`  | Elevated cluster cards, modal dialogs, drawer panels            |
+| `shape-extra-large` | `28px`       | `rounded-3xl`  | Floating Action Buttons (FAB), bottom sheets, AI search bar     |
+| `shape-full`        | `9999px`     | `rounded-full` | Filter chips, topic pills, status badges, avatar icons          |
+
+---
+
+## 5. Depth & Elevation Tokens
+
+AM3 elevation defines physical distance above the canvas using a synchronized pair of shadows:
+
+1. **Ambient Shadow:** Diffuse, soft occlusion light.
+2. **Key Shadow:** Directional light establishing focal source.
+3. **Surface Tint Overlay:** A subtle percentage fill of the `primary` color layered over the surface to provide authentic depth in both Light and Dark modes.
+
+| Level     | Distance | Ambient Shadow                    | Key Shadow                             | Surface Tint | Usage                                          |
+| :-------- | :------- | :-------------------------------- | :------------------------------------- | :----------- | :--------------------------------------------- |
+| `level-0` | 0dp      | None                              | None                                   | 0%           | Base canvas background (`surface`)             |
+| `level-1` | 1dp      | `0px 1px 2px rgba(0, 0, 0, 0.30)` | `0px 1px 3px 1px rgba(0, 0, 0, 0.15)`  | 5%           | Default cards, source table rows, list items   |
+| `level-2` | 3dp      | `0px 1px 2px rgba(0, 0, 0, 0.30)` | `0px 2px 6px 2px rgba(0, 0, 0, 0.15)`  | 8%           | Hovered cards, raised action buttons           |
+| `level-3` | 6dp      | `0px 1px 3px rgba(0, 0, 0, 0.30)` | `0px 4px 8px 3px rgba(0, 0, 0, 0.15)`  | 11%          | Menus, popovers, floating cluster toolbars     |
+| `level-4` | 8dp      | `0px 2px 3px rgba(0, 0, 0, 0.30)` | `0px 6px 10px 4px rgba(0, 0, 0, 0.15)` | 12%          | Modal dialogs, side drawers, cluster inspector |
+| `level-5` | 12dp     | `0px 4px 4px rgba(0, 0, 0, 0.30)` | `0px 8px 12px 6px rgba(0, 0, 0, 0.15)` | 14%          | Critical confirmation sheets, picker overlays  |
+
+---
+
+## 6. Motion Tokens & Physics
+
+AM3 transitions use physics-informed cubic bezier easing curves paired with 10 calibrated duration milestones.
+
+### Easing Curves
+
+- **Emphasized Standard:** `cubic-bezier(0.2, 0.0, 0.0, 1.0)` — Default for two-way spatial movements, expanding cards, and general transitions.
+- **Emphasized Decelerate:** `cubic-bezier(0.05, 0.7, 0.1, 1.0)` — Entering objects, dialog opens, incoming telemetry, dropdown appearances.
+- **Emphasized Accelerate:** `cubic-bezier(0.3, 0.0, 0.8, 0.15)` — Exiting objects, card dismissals, sheet collapses.
+- **Standard:** `cubic-bezier(0.2, 0.0, 0.0, 1.0)` — Simple property changes (color fade, border highlight).
+
+### Duration Tokens
+
+- `short1` (`50ms`): Micro-feedback, state layer opacity transitions.
+- `short2` (`100ms`): Button press ripple, hover highlight trigger.
+- `short3` (`150ms`): Icon swaps, filter chip toggle checkmark animation.
+- `short4` (`200ms`): Toggle switch flip, badge counter increment.
+- `medium1` (`250ms`): Card expansion, cluster article preview open.
+- `medium2` (`300ms`): Navigation drawer slide, pipeline step advance.
+- `medium3` (`350ms`): Bottom sheet slide up, full cluster drawer transition.
+- `medium4` (`400ms`): Modal dialog entrance and scrim fade-in.
+- `long1` (`450ms`): Full-screen modal transitions, layout mode shift.
+- `long2` (`500ms`): Complex grid reflow, multi-cluster reorganizing.
+
+---
+
+## 7. Component Catalog & Architecture
+
+AM3 specifies 79 production-ready components categorized into 10 domains: **Actions**, **Containment**, **Inputs**, **Navigation**, **Feedback**, **Chat**, **Agentic**, **Aurora**, **Charts**, and **Selection**.
+
+Key component patterns adapted for `ai-news-front`:
+
+### 1. Actions: Buttons & Triggers
+
+AM3 supports 5 button emphasis variants:
+
+- **Filled Button (High Emphasis):**
+  - Background: `primary` (`#1473F2` light / `#70C4F8` dark)
+  - Content/Icon: `on-primary` (`#FFFFFF` light / `#002D6C` dark)
+  - Shape: `shape-small` (`8px`) or `shape-full` (`9999px`)
+  - Typography: `label-large` (14px, 500 weight)
+  - Height: `40px` (standard), touch target `48px`
+  - Usage: Primary triggers like "Trigger Ingestion", "Save Source".
+
+- **Filled Tonal Button (Medium Emphasis):**
+  - Background: `primary-container` (`#D3E3FD` light / `#00458F` dark)
+  - Content/Icon: `on-primary-container` (`#041E49` light / `#D3E3FD` dark)
+  - Usage: Secondary actions like "Filter by Source", "Refresh Cluster".
+
+- **Outlined Button (Medium Emphasis):**
+  - Background: Transparent
+  - Border: `1px solid outline` (`#74777F` light / `#8E9099` dark)
+  - Content/Icon: `primary`
+  - Usage: Alternative actions like "Cancel", "View Raw JSON".
+
+- **Elevated Button:**
+  - Background: `surface-container-low` with `level-1` shadow.
+  - Hover: `level-2` shadow with `surface-container-high`.
+
+- **Text Button (Low Emphasis):**
+  - Background: Transparent; Content: `primary`.
+  - Usage: Card footer links like "Read Original Source →".
+
+### 2. Containment: Cards & Clusters
+
+- **Standard Card (Filled Style):**
+  - Background: `surface-container` (`#F1F3F4` light / `#1A1D24` dark)
+  - Shape: `shape-medium` (`12px`)
+  - Border: Optional `1px solid outline-variant` for crisp boundary definition.
+  - Padding: `24px` internal spacing.
+  - Hover State: Transitions to `surface-container-high` (`#E9EBEE` / `#252830`) with `short2` (100ms) easing.
+
+- **Elevated Cluster Card:**
+  - Background: `surface-container-low` (`#F7F9FB` light / `#17191E` dark)
+  - Elevation: `level-1` baseline, animating to `level-2` on hover.
+  - Shape: `shape-large` (`16px`)
+  - Header: Contains Cluster Title (`headline-small`), Source Badge pills, and LLM Summary (`body-large`).
+
+- **Container Bleed Protocol:**
+  - When embedding media banners or full-width divider rules inside cards, AM3 components utilize the `bleed` prop to negative-margin align content directly to card perimeter edges.
+
+### 3. Selection: Chips & Pills
+
+- **Filter Chip:**
+  - Container: `surface-container-low` unselected; `secondary-container` selected.
+  - Border: `1px solid outline-variant` unselected; borderless selected.
+  - Shape: `shape-full` (`9999px`)
+  - Typography: `label-medium` (12px, 500 weight)
+  - Height: `32px`
+  - Icons: Optional leading checkmark or source favicon.
+  - Usage: Filtering news feeds by topic tags (e.g. `LLMs`, `Hardware`, `Robotics`).
+
+- **AI Insight Pill (Tertiary Variant):**
+  - Container: `tertiary-container` (`#EDE9FE` light / `#4F378B` dark)
+  - Content: `on-tertiary-container` (`#2D1B69` light / `#EDE9FE` dark)
+  - Usage: Displaying relevance scores (e.g., `Score: 8.5/10`) and semantic cosine similarity indicators.
+
+### 4. Navigation: Top App Bar
+
+- **Variants:** Small (`64px`), Medium (`112px`), Large (`152px`).
+- **Hierarchy:**
+  - Background: `surface` with scroll-pinned transition to `surface-container-low` + `level-2` elevation.
+  - Title: `title-large` (22px) or `headline-medium` (28px).
+  - Actions: Search trigger, theme switcher (Dark/Light toggle), manual ingest trigger, and admin route links.
+
+### 5. Inputs & Form Fields
+
+- **Outlined Text Field:**
+  - Container: Transparent with `1px solid outline`
+  - Focused Border: `2px solid primary` (`#1473F2` / `#70C4F8`)
+  - Shape: `shape-small` (`8px`)
+  - Label: Floats to upper border in `body-small` with `primary` tint on focus.
+  - Height: `56px` standard touch target.
+
+### 6. Agentic & Telemetry Components
+
+- **Pipeline Step Visualizer:**
+  - Displays the 9-step ingestion workflow (`fetch URLs` → `deduplicate` → `scrape content` → `score relevance` → `generate embeddings` → `cluster` → `summarize` → `persist`).
+  - Active Step: Pulsing `primary` glow (`energy-mid`) with animated circular progress indicator.
+  - Completed Step: `success` checkmark (`#1F8A4C` / `#7ADE97`).
+  - Failed Step: `error` icon (`#BA1A1A` / `#FFB4AB`) with swizzleable retry button.
+
+- **Optimistic Hydration Overlays:**
+  - Instant client-side state preview while background Firestore persistence and Gemini calls complete.
+
+---
+
+## 8. Layout Principles & Spacing Grid
+
+### Base Unit & Spacing Scale
+
+AM3 uses an **8px grid** with 4px half-steps for micro-alignments:
+
+- **Micro (4px):** Inline icon-to-text spacing, tight badge padding.
+- **Small (8px):** Internal button padding, compact list item gaps.
+- **Medium (16px):** Standard component padding, form field gaps.
+- **Large (24px):** Card internal padding, sidebar item separation.
+- **X-Large (32px):** Grid column gaps, section header margin.
+- **2X-Large (48px):** Major layout section gaps.
+- **3X-Large (64px):** Hero container separation and page footer clearance.
+
+### Grid & Max-Width
+
+- **Max Container Width:** `1280px` (or `1440px` for wide desktop dashboards).
+- **Responsive Columns:**
+  - Desktop (≥1024px): 3-column cluster card grid or 2-column with sticky sidebar.
+  - Tablet (768px–1023px): 2-column adaptive grid.
+  - Mobile (<768px): 1-column full-width card stack.
+
+---
+
+## 9. Do's and Don'ts
 
 ### Do
 
-- **Use crisp `0px` borders** to define containers and components—single pixel, `#1B1816` color.
-- **Leverage generous whitespace** between sections (60–96px) to create visual hierarchy and emphasize content.
-- **Pair Newsreader serif with Geist sans-serif** deliberately: serif for headings and emphasis, sans-serif for body and UI.
-- **Maintain consistent `40px` padding** inside cards and containers for uniform visual rhythm.
-- **Use color strategically:** `#E5006D` for accents and focus, `#1F6B3A` for status/active states, `#5A524A` for secondary text.
-- **Stack elements vertically** with clear visual breaks rather than dense horizontal layouts.
-- **Use monospace (Geist Mono)** exclusively for code, commands, and technical content.
-- **Apply single-weight (400) typography** across all fonts; let size and color drive hierarchy.
+- **Do leverage the 14-step HCT tonal system** to ensure contrast compliance between text (`on-surface`, `on-primary`) and backgrounds.
+- **Do apply `shape-medium` (12px) to standard cards** and `shape-full` (9999px) to filter chips and badges.
+- **Do use `tertiary` tokens (`#8B5CF6` / `#D0BCFF`)** specifically for AI-generated reasoning, cluster summaries, and score badges.
+- **Do utilize dual-layer shadows (`level-1` to `level-3`)** combined with surface tinting for elevated cards and dropdown menus.
+- **Do support full Dark and Light theme parity** using semantic variables rather than hardcoded hex values.
+- **Do animate interactive states** using Emphasized easing curves (`cubic-bezier(0.2, 0.0, 0.0, 1.0)`) and appropriate durations (`short2` to `medium2`).
 
 ### Don't
 
-- **Never use border radius.** All components have `0px` radius for graphic sharpness and print quality.
-- **Avoid heavy shadows or depth effects.** Borders define structure, not photorealistic elevation.
-- **Don't mix multiple serif or sans-serif families.** Stick to Newsreader, Geist, and Geist Mono only.
-- **Avoid font-weight variation (bold, 700, etc.).** Hierarchy is achieved through size, color, and spacing.
-- **Don't use backgrounds with low contrast.** Text and backgrounds must maintain at least WCAG AA contrast ratios.
-- **Avoid cluttering whitespace.** Dense layouts contradict the editorial, minimalist ethos.
-- **Don't use the accent magenta (`#E5006D`) for body text.** Reserve it for highlights, interactive states, and call-outs.
-- **Never override the warm cream palette with cold grays or whites.** Maintain the warm, paper-like aesthetic throughout.
+- **Don't use `0px` sharp corners** everywhere—AM3 is an expressive, contoured design system with tactile rounded geometry.
+- **Don't hardcode pure black (`#000000`) or harsh stark gray** for dark mode backgrounds—use AM3's calibrated `surface` (`#111318`) and `surface-container` (`#1A1D24`).
+- **Don't use random non-token box shadows**; always combine ambient and key shadows matching the 6 standard elevation levels.
+- **Don't use high-saturation accent colors for long paragraph text**; reserve `primary` and `secondary` for interactive triggers, labels, and badges.
+- **Don't omit touch target considerations**; interactive controls must always maintain at least `48px` effective clickable area on touch devices.
 
-## 8. Responsive Behavior
+---
 
-### Breakpoints
+## 10. Responsive Breakpoints & Touch Guidelines
 
-| Name             | Width         | Key Changes                                                                                                           |
-| ---------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Mobile (XS)      | 320px–479px   | Single column, full-width cards, `24px` container padding, smaller `24px` gaps between sections, buttons full-width   |
-| Small (S)        | 480px–767px   | Single column, `32px` container padding, `32px` gaps between sections, card width at 100%                             |
-| Medium (M)       | 768px–1023px  | Single–two column flexible layout, `40px` container padding, `48px` gaps, cards can sit side-by-side if space permits |
-| Large (L)        | 1024px–1223px | Two-column grid, max-width 1024px container, `48px` padding, full `60px` gaps between major sections                  |
-| Extra Large (XL) | 1224px+       | Two-column or wide layout, max-width 1224px enforced, `80px` gaps between sections, full sidebar support              |
+| Breakpoint            | Viewport Width   | Container Width     | Layout Behavior                                                                         |
+| :-------------------- | :--------------- | :------------------ | :-------------------------------------------------------------------------------------- |
+| Compact (Phone)       | `< 600px`        | 100%                | Single column, navigation bar at bottom or collapsed app bar, full-width action buttons |
+| Medium (Tablet)       | `600px – 839px`  | Fluid (16px margin) | 2-column card grid, navigation rail or expandable top app bar                           |
+| Expanded (Desktop)    | `840px – 1199px` | `100% max 1120px`   | 2–3 column card grid, persistent navigation drawer or top app bar                       |
+| Large (Large Desktop) | `≥ 1200px`       | `max 1280px`        | 3-column cluster feed, detailed telemetry sidebar, wide dashboard layout                |
 
-### Touch Targets
+### Touch Target Standard
 
-- **Minimum interactive size:** `44px` × `44px` (buttons, links, clickable elements)
-- **Button padding:** Ensure at least `8px` of padding on all sides for comfortable touch interaction
-- **Link spacing:** Maintain at least `16px` horizontal and `12px` vertical separation between adjacent links to avoid accidental mis-taps
-- **Form inputs:** Minimum `40px` height, with `12px` horizontal padding for comfortable text entry on touch devices
+- All interactive controls (buttons, chips, icon toggles) must provide an active touch hit-area of at least **`48px × 48px`** (achieved via padding or transparent touch targets even if visual height is 32px or 40px).
 
-### Collapsing Strategy
+---
 
-- **Navigation:** Stack vertically on mobile (M and below); horizontal bar on larger screens (L and up).
-- **Cards:** Single column on mobile (XS–S); two-column grid on medium and larger (M and up), responsive to available space.
-- **Hero sections:** Full-width text and images on all breakpoints; reduce font size and padding on XS/S (h1: 40px instead of 56px on mobile).
-- **Padding reduction:** Container padding reduces from `48px` (L/XL) to `24px` (XS/S) to preserve screen real estate on small devices.
-- **Section gaps:** Vertical spacing reduces from `96px` (L/XL) to `48px` (M) to `32px` (XS/S) to maintain visual rhythm without overwhelming small viewports.
-- **Code blocks:** Monospace text size reduces to `12px` on XS/S with horizontal scroll if necessary to maintain readability.
+## 11. Agent Prompt Guide & Quick Reference
 
-## 9. Agent Prompt Guide
+### Quick Token Reference
 
-### Quick Color Reference
+```css
+:root {
+  /* Light Mode (AM3 GM3 Aurora Living Blues) */
+  --am3-primary: #1473f2;
+  --am3-on-primary: #ffffff;
+  --am3-primary-container: #d3e3fd;
+  --am3-on-primary-container: #041e49;
+  --am3-secondary: #38b6ff;
+  --am3-tertiary: #8b5cf6; /* AI Reasoning & Clusters */
+  --am3-tertiary-container: #ede9fe;
+  --am3-on-tertiary-container: #2d1b69;
+  --am3-surface: #ffffff;
+  --am3-surface-container: #f1f3f4;
+  --am3-surface-container-high: #e9ebee;
+  --am3-outline: #74777f;
+  --am3-outline-variant: #c4c6d0;
 
-- **Primary Text & Borders:** Deep Charcoal (`#1B1816`)
-- **Primary Background:** Warm Cream (`#F4EFE6`)
-- **Card / Container Surface:** Light Cream (`#EDE6D8`)
-- **Accent / Highlight:** Magenta Signal (`#E5006D`)
-- **Active / Success Status:** Forest Green (`#1F6B3A`)
-- **Secondary Text:** Medium Taupe (`#5A524A`)
-- **Tertiary Text:** Light Taupe (`#9A8F82`)
+  /* Typography */
+  --font-display: "Plus Jakarta Sans", "Google Sans", sans-serif;
+  --font-body: "Inter", "Google Sans Text", sans-serif;
+  --font-mono: "JetBrains Mono", "Google Sans Mono", monospace;
 
-### Iteration Guide
+  /* Shape */
+  --shape-xs: 4px;
+  --shape-sm: 8px;
+  --shape-md: 12px;
+  --shape-lg: 16px;
+  --shape-xl: 28px;
+  --shape-full: 9999px;
 
-1. **Typography foundation:** All text uses Newsreader (serif, headings/display), Geist (sans-serif, body/UI), or Geist Mono (code). No other fonts. Weight always 400; vary size for hierarchy.
+  /* Elevation (Level 1) */
+  --elevation-1: 0px 1px 2px rgba(0, 0, 0, 0.3), 0px 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --elevation-2: 0px 1px 2px rgba(0, 0, 0, 0.3), 0px 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --elevation-3: 0px 1px 3px rgba(0, 0, 0, 0.3), 0px 4px 8px 3px rgba(0, 0, 0, 0.15);
 
-2. **Borders define structure:** Every container, button, card, and input has a `1px solid #1B1816` border. Zero border radius everywhere. Borders are the primary visual structure element.
+  /* Motion */
+  --easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  --duration-short2: 100ms;
+  --duration-medium2: 300ms;
+}
 
-3. **Spacing in multiples of 8px:** All padding, margins, gaps use values from the spacing scale (`8px`, `16px`, `24px`, `32px`, `40px`, `48px`, `60px`, `80px`, `96px`). Maintain proportional rhythm.
+[data-theme="dark"] {
+  --am3-primary: #70c4f8;
+  --am3-on-primary: #002d6c;
+  --am3-primary-container: #00458f;
+  --am3-on-primary-container: #d3e3fd;
+  --am3-secondary: #a5d8ff;
+  --am3-tertiary: #d0bcff;
+  --am3-tertiary-container: #4f378b;
+  --am3-on-tertiary-container: #ede9fe;
+  --am3-surface: #111318;
+  --am3-surface-container: #1a1d24;
+  --am3-surface-container-high: #252830;
+  --am3-outline: #8e9099;
+  --am3-outline-variant: #44474f;
+}
+```
 
-4. **Color hierarchy:** Primary interactions use `#F4EFE6` or `#EDE6D8` backgrounds with `#1B1816` text/borders. Accents and highlights use `#E5006D` sparingly. Status states use `#1F6B3A` (active/success).
+### Component Implementation Checklist
 
-5. **Button consistency:** All buttons have `0px` border radius, `1px` border, and either transparent or light cream background. Text color is `#1B1816` (primary) or inherit from context (secondary buttons).
-
-6. **Card padding standard:** Cards always use `40px` internal padding, `1px #1B1816` border, `0px` radius, and `#EDE6D8` background. Maintain this across all card variants.
-
-7. **Whitespace is intentional:** Sections separated by at least `60px` (mobile: `32px`) vertical space. No cramped layouts. Breathing room reinforces editorial quality.
-
-8. **Hover and focus states:** Buttons and links shift text color from `#1B1816` to `#5A524A` on hover. Interactive elements can gain a border color shift to `#E5006D` on focus. Never add rounded corners or shadows for state changes.
-
-9. **Responsive scaling:** Font sizes and padding reduce proportionally on smaller screens (mobile: h1 40px, desktop: 56px). Max-width container is `1224px`. Use flex or grid with intelligent stacking; never force two-column layouts on devices under 768px.
-
-10. **Monospace strictness:** Code blocks, terminal commands, and technical examples use Geist Mono exclusively at `14px` (mobile: `12px`). Always pair with `#F4EFE6` background and `1px #1B1816` border to signal code context.
+1. **Card Components:** Use `bg-[var(--am3-surface-container)]`, `rounded-xl` (`shape-medium`), optional `border border-[var(--am3-outline-variant)]`, and `hover:shadow-[var(--elevation-2)]` transition.
+2. **AI Cluster / Summary Highlights:** Wrap in `bg-[var(--am3-tertiary-container)] text-[var(--am3-on-tertiary-container)] rounded-2xl` (`shape-large`).
+3. **Filter Pills:** Apply `rounded-full` (`shape-full`), `h-8`, `px-4`, `text-xs font-medium` (`label-medium`), with active state using `bg-[var(--am3-primary-container)]`.
+4. **Primary Action Buttons:** Apply `rounded-lg` (`shape-small`) or `rounded-full`, `bg-[var(--am3-primary)] text-[var(--am3-on-primary)] hover:opacity-95 transition-all duration-100 ease-[var(--easing-emphasized)]`.
+5. **Type Pairing:** Display titles with `Plus Jakarta Sans` / `Google Sans` (`font-display`), body narratives with `Inter` / `Google Sans Text` (`font-body`), code and metrics with `JetBrains Mono` (`font-mono`).

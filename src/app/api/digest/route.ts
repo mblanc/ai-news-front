@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getLatestDigest } from "@/lib/firebase"
+import { getLatestDigest, getDigestManifest } from "@/lib/firebase"
 import type { DigestScope, SourceCategory } from "@/lib/types"
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
+
+    if (searchParams.get("manifest") === "true") {
+      const manifest = await getDigestManifest()
+      return NextResponse.json({ manifest })
+    }
     const scopeParam = searchParams.get("scope") as DigestScope | null
     const categoryParam = searchParams.get("category") as SourceCategory | "all" | null
 

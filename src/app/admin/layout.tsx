@@ -1,26 +1,33 @@
 import Link from "next/link"
 import type React from "react"
+import { ArrowLeft, Shield } from "lucide-react"
+import { ModeToggle } from "@/components/mode-toggle"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div
-          className="mx-auto flex items-center justify-between px-6"
-          style={{ maxWidth: "1224px", height: "38px" }}
-        >
-          <span className="font-mono text-xs text-muted-foreground uppercase tracking-widest">
-            Admin
-          </span>
-          <Link
-            href="/"
-            className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
-          >
-            ← Back
-          </Link>
+    <div className="min-h-screen bg-background transition-colors">
+      <header className="sticky top-0 z-50 w-full border-b border-border/80 bg-background/95 backdrop-blur-md">
+        <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-2.5">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-card px-2.5 py-1 font-sans text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary transition-all shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
+            >
+              <ArrowLeft className="h-3 w-3" />
+              <span>Back to Feed</span>
+            </Link>
+            <div className="flex items-center gap-1.5 font-display text-xs sm:text-sm font-bold text-foreground">
+              <Shield className="h-3.5 w-3.5 text-primary" />
+              <span>Admin Console</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <ModeToggle />
+          </div>
         </div>
       </header>
-      <main className="mx-auto px-6 py-8" style={{ maxWidth: "1224px" }}>
+      <main id="main-content" className="mx-auto max-w-7xl px-4 sm:px-6 py-4 sm:py-6">
         {children}
       </main>
     </div>

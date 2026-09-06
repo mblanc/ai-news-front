@@ -665,7 +665,7 @@ export function createProductionIngestionPipeline(): IngestionPipeline {
             clusterSummary = article.title
           }
 
-          await updateCluster(upC.id, upC.articles, upC.centroid, {
+          await updateCluster(upC.id, upC.articles.map(toClusterArticle), upC.centroid, {
             summary: summaryInfo.summary,
             keyTakeaways: summaryInfo.keyTakeaways,
             whyItMatters: summaryInfo.whyItMatters,

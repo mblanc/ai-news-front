@@ -37,7 +37,6 @@
 | Suno Blog                           | page | genmedia           | https://suno.com/blog                                                                          |
 | Luma AI Blog                        | page | genmedia           | https://lumalabs.ai/blog                                                                       |
 | Black Forest Labs                   | page | genmedia           | https://blackforestlabs.ai                                                                     |
-| Banodoco                            | page | genmedia           | https://banodoco.ai                                                                            |
 | Artificial Analysis Articles        | page | ecosystem-analysis | https://artificialanalysis.ai/articles                                                         |
 | TLDR AI                             | page | ecosystem-analysis | https://tldr.tech/ai                                                                           |
 | Latent Space                        | rss  | ecosystem-analysis | https://www.latent.space/feed                                                                  |
@@ -47,4 +46,4 @@
 | Mistral AI Blog                     | page | frontier-research  | https://mistral.ai/news                                                                        |
 | Ars Technica AI                     | rss  | industry-news      | https://feeds.arstechnica.com/arstechnica/index                                                |
 
-**Total: 45 sources — categorized into 5 topics** (Frontier R&D, AI Engineering, GenMedia, Ecosystem Analysis, Industry News)
+**Total: 44 sources — categorized into 5 topics** (Frontier R&D, AI Engineering, GenMedia, Ecosystem Analysis, Industry News)
