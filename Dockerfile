@@ -1,4 +1,4 @@
-FROM node:24-alpine AS base
+FROM node:26.12.1-alpine AS base
 RUN npm install -g npm@12.0.1
     
 # Install dependencies only when needed
