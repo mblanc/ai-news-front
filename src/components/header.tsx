@@ -1,26 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import { Sparkles, Shield } from "lucide-react"
+import { Sparkles, Radio } from "lucide-react"
 import { ModeToggle } from "@/components/mode-toggle"
 
 export function Header() {
-  const [isAdmin, setIsAdmin] = useState<boolean>(false)
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.isAdmin) {
-          setIsAdmin(true)
-        }
-      })
-      .catch(() => {
-        // Silently fail to false
-      })
-  }, [])
-
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
@@ -54,15 +38,13 @@ export function Header() {
             {today}
           </span>
 
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 sm:px-2.5 sm:py-1 font-sans text-xs font-medium text-foreground hover:border-primary hover:text-primary transition-all shadow-xs min-h-[36px] sm:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
-            >
-              <Shield className="h-3.5 w-3.5 sm:h-3 sm:w-3 text-primary" />
-              <span>Admin</span>
-            </Link>
-          )}
+          <Link
+            href="/sources"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 sm:px-2.5 sm:py-1 font-sans text-xs font-medium text-foreground hover:border-primary hover:text-primary transition-all shadow-xs min-h-[36px] sm:min-h-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
+          >
+            <Radio className="h-3.5 w-3.5 sm:h-3 sm:w-3 text-primary" />
+            <span>Sources</span>
+          </Link>
 
           <ModeToggle />
         </div>

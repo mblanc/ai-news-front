@@ -54,4 +54,6 @@ plans/
 # antigravity-cli
 .antigravitycli/
 
+# generated tv briefings & scratch renders
+/tv/
 

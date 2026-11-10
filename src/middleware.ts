@@ -15,8 +15,25 @@ export function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // In development mode, allow direct local access
+  // In development mode, check for dev role override
   if (process.env.NODE_ENV === "development") {
+    const devRoleCookie = request.cookies.get("dev_role")?.value
+    const roleParam = request.nextUrl.searchParams.get("role")
+    const isDevUser =
+      roleParam === "user" ||
+      (!roleParam && (devRoleCookie === "user" || process.env.DEV_ADMIN === "false"))
+
+    if (isDevUser) {
+      if (isAdminPage) {
+        const url = request.nextUrl.clone()
+        url.pathname = "/"
+        url.search = ""
+        return NextResponse.redirect(url)
+      }
+
+      return NextResponse.json({ error: "Forbidden: Admin access restricted" }, { status: 403 })
+    }
+
     return NextResponse.next()
   }
 

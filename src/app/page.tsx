@@ -294,13 +294,24 @@ function NewsHomeContent() {
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
-            <div className="lg:col-span-1 lg:sticky lg:top-[116px] lg:self-start">
+            <div className="lg:col-span-1 lg:sticky lg:top-[116px] lg:self-start space-y-3">
               <FilterPanel
                 sources={sources}
                 filters={filters}
                 onFilter={setFilters}
                 onReset={handleResetFilters}
               />
+              <p className="font-sans text-xs text-muted-foreground px-1">
+                Made with ❤️ by{" "}
+                <a
+                  href="https://moma.corp.google.com/person/mblanc"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-foreground hover:underline transition-colors"
+                >
+                  @mblanc
+                </a>
+              </p>
             </div>
 
             <div className="lg:col-span-3">

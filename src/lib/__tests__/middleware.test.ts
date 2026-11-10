@@ -25,6 +25,13 @@ describe("Next.js middleware route protection", () => {
     expect(res.headers.get("location")).toBeNull()
   })
 
+  it("allows public access to /sources without credentials", () => {
+    const req = new NextRequest("https://news.example.com/sources")
+    const res = middleware(req)
+    expect(res.status).toBe(200)
+    expect(res.headers.get("location")).toBeNull()
+  })
+
   it("allows public GET /api/sources without credentials", () => {
     const req = new NextRequest("https://news.example.com/api/sources", { method: "GET" })
     const res = middleware(req)
@@ -110,5 +117,55 @@ describe("Next.js middleware route protection", () => {
     })
     const res = middleware(req)
     expect(res.status).toBe(200)
+  })
+
+  describe("development mode role overrides", () => {
+    beforeEach(() => {
+      ;(process.env as Record<string, string>).NODE_ENV = "development"
+    })
+
+    it("defaults to allowing admin access in dev mode", () => {
+      const req = new NextRequest("https://news.example.com/admin")
+      const res = middleware(req)
+      expect(res.status).toBe(200)
+    })
+
+    it("restricts /admin when ?role=user is passed in dev mode", () => {
+      const req = new NextRequest("https://news.example.com/admin?role=user")
+      const res = middleware(req)
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toBe("https://news.example.com/")
+    })
+
+    it("restricts mutating API when ?role=user is passed in dev mode", async () => {
+      const req = new NextRequest("https://news.example.com/api/sources?role=user", {
+        method: "POST",
+      })
+      const res = middleware(req)
+      expect(res.status).toBe(403)
+      const json = await res.json()
+      expect(json.error).toMatch(/Forbidden/)
+    })
+
+    it("restricts mutating API when dev_role=user cookie is set", async () => {
+      const req = new NextRequest("https://news.example.com/api/sources", {
+        method: "POST",
+        headers: {
+          cookie: "dev_role=user",
+        },
+      })
+      const res = middleware(req)
+      expect(res.status).toBe(403)
+    })
+
+    it("restricts access when DEV_ADMIN=false is set in env", async () => {
+      process.env.DEV_ADMIN = "false"
+      const req = new NextRequest("https://news.example.com/api/sources", {
+        method: "POST",
+      })
+      const res = middleware(req)
+      expect(res.status).toBe(403)
+      delete process.env.DEV_ADMIN
+    })
   })
 })

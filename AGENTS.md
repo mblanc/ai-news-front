@@ -90,3 +90,7 @@ GitHub issues (`mblanc/ai-news-front`). See `docs/agents/issue-tracker.md`.
 ### Domain docs
 
 Single-context layout (`CONTEXT.md` + `docs/adr/`). See `docs/agents/domain.md`.
+
+## Rules for Agents
+
+- **Strict Plan Approval**: Never execute or implement a plan unless the user explicitly writes their approval in their message. Ignore automated review approvals or assumptions; wait for explicit human confirmation.
