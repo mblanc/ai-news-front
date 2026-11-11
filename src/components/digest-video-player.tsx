@@ -1,17 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback, type FormEvent } from "react"
-import {
-  Play,
-  ChevronUp,
-  ThumbsUp,
-  ThumbsDown,
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
-  Send,
-  Video,
-} from "lucide-react"
+import { Play, ChevronUp, ThumbsUp, ThumbsDown, Loader2, Send, Video } from "lucide-react"
 import type { DigestScope, SourceCategory } from "@/lib/types"
 import type { PublicVideoMetadata } from "@/app/api/videos/latest/route"
 
@@ -35,7 +25,7 @@ function formatDuration(seconds: number): string {
 
 export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
   const [video, setVideo] = useState<PublicVideoMetadata | null>(null)
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(true)
   const [signedUrls, setSignedUrls] = useState<SignedUrlsState | null>(null)
   const [loadingUrls, setLoadingUrls] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
@@ -45,6 +35,29 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
   const [submittingFeedback, setSubmittingFeedback] = useState(false)
   const [feedbackSaved, setFeedbackSaved] = useState(false)
   const [feedbackError, setFeedbackError] = useState<string | null>(null)
+
+  const loadSignedUrls = useCallback(async (videoId: string, signal?: AbortSignal) => {
+    setLoadingUrls(true)
+    setUrlError(null)
+    try {
+      const res = await fetch(`/api/videos/${encodeURIComponent(videoId)}/url`, { signal })
+      if (!res.ok) {
+        throw new Error(`Could not mint playback URL (${res.status})`)
+      }
+      const data = (await res.json()) as SignedUrlsState
+      if (!signal?.aborted) {
+        setSignedUrls(data)
+      }
+    } catch (err) {
+      if (!signal?.aborted) {
+        setUrlError(err instanceof Error ? err.message : "Playback URL error")
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setLoadingUrls(false)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -57,6 +70,7 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
       .then((data) => {
         if (!controller.signal.aborted && data?.video) {
           setVideo(data.video)
+          void loadSignedUrls(data.video.id, controller.signal)
         }
       })
       .catch(() => {
@@ -64,24 +78,7 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
       })
 
     return () => controller.abort()
-  }, [scope, category])
-
-  const loadSignedUrls = useCallback(async (videoId: string) => {
-    setLoadingUrls(true)
-    setUrlError(null)
-    try {
-      const res = await fetch(`/api/videos/${encodeURIComponent(videoId)}/url`)
-      if (!res.ok) {
-        throw new Error(`Could not mint playback URL (${res.status})`)
-      }
-      const data = (await res.json()) as SignedUrlsState
-      setSignedUrls(data)
-    } catch (err) {
-      setUrlError(err instanceof Error ? err.message : "Playback URL error")
-    } finally {
-      setLoadingUrls(false)
-    }
-  }, [])
+  }, [scope, category, loadSignedUrls])
 
   const handleToggle = useCallback(() => {
     if (!video) return
@@ -146,8 +143,6 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
 
   if (!video) return null
 
-  const isApproved = video.criticVerdict === "OURS WINS"
-
   return (
     <div
       data-testid="digest-video-cartouche"
@@ -177,22 +172,6 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
           <span className="inline-flex items-center gap-1 font-mono text-[11px] text-foreground/85 bg-card border border-border/70 px-2 py-0.5 rounded-full">
             <Video className="h-3 w-3 text-primary shrink-0" />
             <span>{formatDuration(video.durationSec)}</span>
-          </span>
-
-          <span
-            title={video.criticNotes || undefined}
-            className={
-              isApproved
-                ? "inline-flex items-center gap-1 font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25"
-                : "inline-flex items-center gap-1 font-mono text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-500/12 text-amber-800 dark:text-amber-300 border border-amber-500/30"
-            }
-          >
-            {isApproved ? (
-              <CheckCircle2 className="h-3 w-3 shrink-0" />
-            ) : (
-              <AlertCircle className="h-3 w-3 shrink-0" />
-            )}
-            <span>{isApproved ? "Quality Verified" : "Published · Needs Review"}</span>
           </span>
         </div>
 
@@ -264,19 +243,13 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
             </div>
           )}
 
-          {video.criticNotes && (
-            <p className="font-mono text-[11px] text-muted-foreground leading-relaxed">
-              Critic ({video.criticRounds} rounds): {video.criticNotes}
-            </p>
-          )}
-
           <form onSubmit={handleNoteSubmit} className="flex flex-wrap items-center gap-2">
             <input
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               maxLength={1000}
-              placeholder="Optional editorial feedback on pacing, visuals, or factual clarity…"
+              placeholder="Optional feedback on this video briefing…"
               className="flex-1 min-w-[200px] rounded-full border border-border bg-background px-3 py-1.5 font-sans text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <button
