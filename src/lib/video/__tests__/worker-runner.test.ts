@@ -111,12 +111,23 @@ describe("executeWorkerTask (Task 4 runner envelope)", () => {
     expect(savedDocs.has("2026-11-10_daily_all")).toBe(true)
   })
 
-  it("rejects videos exceeding 120s without publishing and still cleans temp dir", async () => {
+  it("accepts canonical multi-digest videos up to 180s and rejects videos exceeding 180s", async () => {
+    const okRun = makeFakeDeps({
+      verifyAndMasterMedia: vi.fn(async () => ({
+        finalMp4Path: "/tmp/job-test-0/out/briefing.mp4",
+        posterJpgPath: "/tmp/job-test-0/out/poster.jpg",
+        durationSec: 168.4,
+        lufs: -16.0,
+      })),
+    })
+    const okDoc = await executeWorkerTask({ taskIndex: 0, dateStr: "2026-11-10" }, okRun.deps)
+    expect(okDoc.durationSec).toBe(168.4)
+
     const { deps, savedDocs, cleanup, uploadArtifacts } = makeFakeDeps({
       verifyAndMasterMedia: vi.fn(async () => ({
         finalMp4Path: "/tmp/job-test-0/out/briefing.mp4",
         posterJpgPath: "/tmp/job-test-0/out/poster.jpg",
-        durationSec: 124.2,
+        durationSec: 184.2,
         lufs: -16.0,
       })),
     })

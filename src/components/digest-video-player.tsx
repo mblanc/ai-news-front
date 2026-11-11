@@ -54,7 +54,7 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
   }, [])
 
   useEffect(() => {
-    if (scope !== "daily") return
+    if (scope !== "daily" || category !== "all") return
     const controller = new AbortController()
 
     fetch(

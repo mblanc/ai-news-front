@@ -59,9 +59,9 @@ export async function handleLatestVideoRequest(req: NextRequest, deps: LatestVid
     return NextResponse.json({ error: `Invalid category: ${categoryRaw}` }, { status: 400 })
   }
 
-  // Videos are strictly daily briefings; never display non-daily scopes or stale prior-day videos.
-  if (scopeRaw !== "daily") {
-    return NextResponse.json({ error: "No video available for scope" }, { status: 404 })
+  // Canonical daily briefing is strictly exposed on State of AI (daily + all) for today's date.
+  if (scopeRaw !== "daily" || categoryRaw !== "all") {
+    return NextResponse.json({ error: "No video available for scope/category" }, { status: 404 })
   }
 
   try {

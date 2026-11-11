@@ -1,5 +1,7 @@
 import { createDefaultGcpAuthProvider, type GcpAuthProvider } from "./gcp-auth"
-import { VIDEO_CATEGORIES, type VideoCategory } from "./types"
+import type { VideoCategory } from "./types"
+
+const CANONICAL_VIDEO_CATEGORIES: readonly VideoCategory[] = ["all"]
 
 export interface TriggerVideoWorkerOptions {
   dateStr?: string
@@ -36,7 +38,7 @@ export async function triggerVideoWorkerJob(
 
   const endpoint = `https://run.googleapis.com/v2/projects/${encodeURIComponent(projectId)}/locations/${encodeURIComponent(region)}/jobs/${encodeURIComponent(jobName)}:run`
   const overrides: Record<string, unknown> = {
-    taskCount: VIDEO_CATEGORIES.length,
+    taskCount: CANONICAL_VIDEO_CATEGORIES.length,
   }
   if (options.dateStr) {
     overrides.containerOverrides = [
@@ -70,7 +72,7 @@ export async function triggerVideoWorkerJob(
   return {
     executionName,
     operationName,
-    taskCount: VIDEO_CATEGORIES.length,
-    categories: [...VIDEO_CATEGORIES],
+    taskCount: CANONICAL_VIDEO_CATEGORIES.length,
+    categories: [...CANONICAL_VIDEO_CATEGORIES],
   }
 }

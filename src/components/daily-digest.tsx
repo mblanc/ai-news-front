@@ -367,11 +367,13 @@ export function DailyDigest({ category = "all" }: DailyDigestProps) {
             </h3>
           )}
 
-          <DigestVideoPlayer
-            key={`${activeScope}-${currentCategory}`}
-            scope={activeScope}
-            category={currentCategory}
-          />
+          {activeScope === "daily" && currentCategory === "all" && (
+            <DigestVideoPlayer
+              key={`${activeScope}-${currentCategory}`}
+              scope={activeScope}
+              category={currentCategory}
+            />
+          )}
 
           {digest.insights.length > 0 && (
             <ul className="space-y-2.5 border-t border-border/60 pt-2.5">

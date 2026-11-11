@@ -12,7 +12,9 @@ import {
   type TtsTokenUsage,
 } from "@/lib/video/cost"
 import { getDigestVideoRepo } from "@/lib/video/repo"
+import { mergeAndDeduplicateDigests } from "@/lib/video/dedup-digests"
 import {
+  VIDEO_CATEGORIES,
   resolveCategoryFromTaskIndex,
   validateAgyResult,
   type AgyResult,
@@ -21,7 +23,7 @@ import {
 } from "@/lib/video/types"
 
 const execFileAsync = promisify(execFile)
-const MAX_VIDEO_DURATION_SEC = 120
+const MAX_VIDEO_DURATION_SEC = 180
 const TARGET_LUFS = -16
 
 interface AgyResultEnvelope {
@@ -431,7 +433,28 @@ export function createDefaultWorkerRunnerDeps(
     },
 
     async getDigest(category) {
-      const digest = await getLatestDigest("daily", category === "all" ? undefined : category)
+      if (category === "all") {
+        const entries = await Promise.all(
+          VIDEO_CATEGORIES.map(async (cat) => {
+            const d = await getLatestDigest("daily", cat === "all" ? undefined : cat)
+            return [cat, d] as const
+          })
+        )
+        const byCat = Object.fromEntries(entries) as Partial<Record<VideoCategory, Digest | null>>
+        const merged = mergeAndDeduplicateDigests(byCat)
+        console.log(
+          `[video-worker] Deduplicated ${merged.rawInsightCount} raw insights across all daily digests into ${merged.insights.length} canonical stories`
+        )
+        return {
+          scope: "daily",
+          category: "all",
+          headline: merged.headline,
+          generatedAt: merged.generatedAt,
+          insights: merged.insights,
+        }
+      }
+
+      const digest = await getLatestDigest("daily", category)
       if (!digest || digest.insights.length === 0) {
         throw new Error(`No populated daily digest found for category=${category}`)
       }
@@ -497,7 +520,7 @@ export function createDefaultWorkerRunnerDeps(
           process.env.VIDEO_AGENT_EFFORT || "medium",
           "--dangerously-skip-permissions",
           "--print-timeout",
-          process.env.AGY_PRINT_TIMEOUT || "2400s",
+          process.env.AGY_PRINT_TIMEOUT || "3600s",
           "--output-format",
           "stream-json",
           "--json-schema",
@@ -510,7 +533,7 @@ export function createDefaultWorkerRunnerDeps(
           GOOGLE_CLOUD_QUOTA_PROJECT: quotaProject,
           GOOGLE_CLOUD_LOCATION: process.env.GOOGLE_CLOUD_LOCATION || "global",
         },
-        2_500_000
+        3_720_000
       )
 
       const { result, usage: envelopeUsage } = parseAgyStreamOutput(stdout)

@@ -78,12 +78,21 @@ describe("mintV4SignedUrl", () => {
 
 describe("GET /api/videos/latest", () => {
   it("returns 404 when no ready video exists for today", async () => {
+    const req = new NextRequest("http://localhost:3000/api/videos/latest?scope=daily&category=all")
+    const res = await handleLatestVideoRequest(req, {
+      todayDateStr: "2026-11-11",
+      getReadyForDate: vi.fn(async () => null),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it("returns 404 for non-canonical sub-categories (e.g. genmedia)", async () => {
     const req = new NextRequest(
       "http://localhost:3000/api/videos/latest?scope=daily&category=genmedia"
     )
     const res = await handleLatestVideoRequest(req, {
       todayDateStr: "2026-11-11",
-      getReadyForDate: vi.fn(async () => null),
+      getReadyForDate: vi.fn(async () => makeReadyVideo()),
     })
     expect(res.status).toBe(404)
   })
