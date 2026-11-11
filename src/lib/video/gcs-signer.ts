@@ -132,10 +132,8 @@ export function createDefaultGcsObjectSigner(
   auth: GcpAuthProvider = createDefaultGcpAuthProvider()
 ): (objectPath: string, expiresInSeconds?: number) => Promise<SignedObjectResult> {
   return async (objectPath: string, expiresInSeconds = MAX_SIGNED_URL_TTL_SECONDS) => {
-    const bucket = process.env.VIDEO_GCS_BUCKET
-    if (!bucket) {
-      throw new Error("VIDEO_GCS_BUCKET env var is required")
-    }
+    const bucket =
+      process.env.VIDEO_GCS_BUCKET || `ai-news-front-videos-${await auth.getProjectId()}`
     const serviceAccountEmail = await auth.getServiceAccountEmail()
     return mintV4SignedUrl(
       { bucket, objectPath, expiresInSeconds },

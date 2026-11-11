@@ -28,6 +28,17 @@ async function fetchMetadata(path: string): Promise<string | null> {
 }
 
 export function createDefaultGcpAuthProvider(): GcpAuthProvider {
+  let cachedLocalSaEmail: string | null = null
+
+  const resolveProjectId = async (): Promise<string> => {
+    if (process.env.GOOGLE_CLOUD_PROJECT_ID) return process.env.GOOGLE_CLOUD_PROJECT_ID
+    if (process.env.GOOGLE_CLOUD_QUOTA_PROJECT) return process.env.GOOGLE_CLOUD_QUOTA_PROJECT
+    const { stdout } = await execFileAsync("gcloud", ["config", "get-value", "project"])
+    const project = stdout.trim()
+    if (!project) throw new Error("GOOGLE_CLOUD_PROJECT_ID could not be resolved")
+    return project
+  }
+
   return {
     async getAccessToken(): Promise<string> {
       const raw = await fetchMetadata("/token")
@@ -51,18 +62,25 @@ export function createDefaultGcpAuthProvider(): GcpAuthProvider {
       }
       const metaEmail = await fetchMetadata("/email")
       if (metaEmail && metaEmail.includes("@")) return metaEmail.trim()
+      if (cachedLocalSaEmail) return cachedLocalSaEmail
+
+      const projectId = await resolveProjectId()
+      const { stdout } = await execFileAsync("gcloud", [
+        "projects",
+        "describe",
+        projectId,
+        "--format=value(projectNumber)",
+      ])
+      const projectNumber = stdout.trim()
+      if (projectNumber) {
+        cachedLocalSaEmail = `${projectNumber}-compute@developer.gserviceaccount.com`
+        return cachedLocalSaEmail
+      }
       throw new Error(
         "GCP_SIGNING_SERVICE_ACCOUNT not set and Cloud Run metadata email unavailable"
       )
     },
 
-    async getProjectId(): Promise<string> {
-      if (process.env.GOOGLE_CLOUD_PROJECT_ID) return process.env.GOOGLE_CLOUD_PROJECT_ID
-      if (process.env.GOOGLE_CLOUD_QUOTA_PROJECT) return process.env.GOOGLE_CLOUD_QUOTA_PROJECT
-      const { stdout } = await execFileAsync("gcloud", ["config", "get-value", "project"])
-      const project = stdout.trim()
-      if (!project) throw new Error("GOOGLE_CLOUD_PROJECT_ID could not be resolved")
-      return project
-    },
+    getProjectId: resolveProjectId,
   }
 }
