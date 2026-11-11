@@ -13,6 +13,8 @@ import {
 } from "@/lib/video/cost"
 import { getDigestVideoRepo } from "@/lib/video/repo"
 import { mergeAndDeduplicateDigests } from "@/lib/video/dedup-digests"
+import { harvestDigestMediaAndLogos } from "@/lib/video/harvest-media"
+import type { GroundedInsight } from "@/lib/types"
 import {
   VIDEO_CATEGORIES,
   resolveCategoryFromTaskIndex,
@@ -461,7 +463,7 @@ export function createDefaultWorkerRunnerDeps(
       return digest
     },
 
-    async runAgyHeadless({ workDir, briefPath, category, dateStr }) {
+    async runAgyHeadless({ workDir, briefPath, digest, category, dateStr }) {
       const promptPath = path.resolve(process.cwd(), "video-worker/prompts/daily-briefing.md")
       const schemaPath = path.resolve(process.cwd(), "video-worker/schemas/agy-result.schema.json")
       const assetsSrc = path.resolve(process.cwd(), "video-worker/assets")
@@ -497,6 +499,39 @@ export function createDefaultWorkerRunnerDeps(
           "utf8"
         ),
       ])
+
+      // Pre-harvest real article charts/images + official brand logos into projectOut/assets/
+      const groundedInsights: GroundedInsight[] = digest.insights.map((ins) =>
+        typeof ins === "string" ? { text: ins, sources: [] } : ins
+      )
+      const enrichedInsights = await harvestDigestMediaAndLogos(groundedInsights, projectOut)
+      const mediaCount = enrichedInsights.reduce(
+        (sum, item) => sum + (item.candidateMedia?.length ?? 0),
+        0
+      )
+      const uniqueLogos = new Set(
+        enrichedInsights.flatMap((item) => (item.logos ?? []).map((l) => l.localPath))
+      )
+      console.log(
+        `[video-worker] Harvested ${mediaCount} article media candidates and ${uniqueLogos.size} brand logos`
+      )
+
+      await fs.writeFile(
+        briefPath,
+        JSON.stringify(
+          {
+            date: dateStr,
+            scope: "daily",
+            category,
+            headline: digest.headline,
+            generatedAt: digest.generatedAt,
+            insights: enrichedInsights,
+          },
+          null,
+          2
+        ),
+        "utf8"
+      )
 
       const prompt = [
         basePrompt,
