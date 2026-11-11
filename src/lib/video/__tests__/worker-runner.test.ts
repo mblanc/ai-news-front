@@ -43,7 +43,6 @@ function makeFakeDeps(overrides: Partial<WorkerRunnerDeps> = {}) {
     async queryLatestReady() {
       return null
     },
-    async appendFeedback() {},
   }
   const cleanup = vi.fn(async () => {})
   const uploadArtifacts = vi.fn(async () => ({
@@ -108,6 +107,7 @@ describe("executeWorkerTask (Task 4 runner envelope)", () => {
     expect(doc.criticVerdict).toBe("NEEDS_REVIEW")
     expect(doc.criticRounds).toBe(3)
     expect(doc.criticNotes).toContain("card 3")
+    expect(doc.cost?.totalUsd).toBeGreaterThan(0)
     expect(savedDocs.has("2026-11-10_daily_all")).toBe(true)
   })
 
@@ -182,5 +182,48 @@ describe("parseEbur128IntegratedLufs", () => {
     ].join("\n")
 
     expect(parseEbur128IntegratedLufs(sample)).toBe(-16.2)
+  })
+})
+
+describe("sumBrainTranscriptUsage", () => {
+  it("sums parent and subagent PLANNER_RESPONSE tokens across brain conversations", async () => {
+    const fs = await import("node:fs/promises")
+    const os = await import("node:os")
+    const path = await import("node:path")
+    const { sumBrainTranscriptUsage } = await import("@/lib/video/worker-runner")
+
+    const tmpBrain = await fs.mkdtemp(path.join(os.tmpdir(), "brain-usage-"))
+    try {
+      for (const [id, inTok, cacheTok, outTok] of [
+        ["parent-conv", 100_000, 300_000, 20_000],
+        ["subagent-1", 40_000, 100_000, 8_000],
+      ] as const) {
+        const logDir = path.join(tmpBrain, id, ".system_generated", "logs")
+        await fs.mkdir(logDir, { recursive: true })
+        await fs.writeFile(
+          path.join(logDir, "transcript.jsonl"),
+          [
+            JSON.stringify({ type: "USER_INPUT", content: "hi" }),
+            JSON.stringify({
+              type: "PLANNER_RESPONSE",
+              input_tokens: inTok,
+              cache_read_tokens: cacheTok,
+              output_tokens: outTok,
+            }),
+          ].join("\n"),
+          "utf8"
+        )
+      }
+
+      const summed = await sumBrainTranscriptUsage(tmpBrain)
+      expect(summed).toEqual({
+        inputTokens: 140_000,
+        cacheReadTokens: 400_000,
+        outputTokens: 28_000,
+        thinkingTokens: 0,
+      })
+    } finally {
+      await fs.rm(tmpBrain, { recursive: true, force: true })
+    }
   })
 })

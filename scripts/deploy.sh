@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Configuration
 PROJECT_ID="svc-demo-vertex"
@@ -36,7 +37,7 @@ GCP_SIGNING_SERVICE_ACCOUNT=${GCP_SIGNING_SERVICE_ACCOUNT:-"125188993477-compute
 
 # 1. Build the container image using Cloud Build
 echo "Building container image using Cloud Build..."
-gcloud builds submit --tag $IMAGE_URI "$PROJECT_ROOT"
+gcloud builds submit --project "$GOOGLE_CLOUD_PROJECT_ID" --tag "$IMAGE_URI" "$PROJECT_ROOT"
 
 # 2. Deploy to Cloud Run
 echo "Deploying to Cloud Run..."

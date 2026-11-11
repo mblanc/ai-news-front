@@ -30,12 +30,6 @@ function createFakeStore(initial: Record<string, Record<string, unknown>> = {}):
         .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))
       return matches[0] ?? null
     },
-    async appendFeedback(id, entry) {
-      const existing = store.get(id)
-      if (!existing) throw new Error(`Video ${id} not found`)
-      const current = Array.isArray(existing.humanFeedback) ? existing.humanFeedback : []
-      store.set(id, { ...existing, humanFeedback: [...current, entry] })
-    },
   }
   return { store, adapter }
 }
@@ -107,14 +101,11 @@ describe("digest_videos repository", () => {
     expect(latest?.id).toBe("2026-11-10_daily_all")
     expect(latest?.criticVerdict).toBe("OURS WINS")
 
-    await repo.addFeedback(saved.id, {
-      rating: "up",
-      note: "Crisp METR chart",
-      updatedBy: "mblanc@google.com",
-    })
-    const fetched = await repo.getById(saved.id)
-    expect(fetched?.humanFeedback).toHaveLength(1)
-    expect(fetched?.humanFeedback?.[0]?.rating).toBe("up")
+    const forSameDay = await repo.getReadyForDate("2026-11-10", "daily", "all")
+    expect(forSameDay?.id).toBe("2026-11-10_daily_all")
+
+    const forNextDay = await repo.getReadyForDate("2026-11-11", "daily", "all")
+    expect(forNextDay).toBeNull()
   })
 
   it("rejects raw public https URLs in gcs paths", async () => {

@@ -1,15 +1,5 @@
 import { createDefaultWorkerRunnerDeps, executeWorkerTask } from "@/lib/video/worker-runner"
-
-function getParisDateString(date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Paris",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date)
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ""
-  return `${get("year")}-${get("month")}-${get("day")}`
-}
+import { getParisDateString } from "@/lib/video/types"
 
 async function main() {
   const taskIndexRaw = process.env.CLOUD_RUN_TASK_INDEX ?? "0"
@@ -18,8 +8,11 @@ async function main() {
 
   console.log(`[video-worker] Starting taskIndex=${taskIndex} date=${dateStr}`)
   const doc = await executeWorkerTask({ taskIndex, dateStr }, createDefaultWorkerRunnerDeps())
+  const costSummary = doc.cost
+    ? ` cost=$${doc.cost.totalUsd.toFixed(4)} (llm=$${doc.cost.llmUsd.toFixed(4)} tts=$${doc.cost.ttsUsd.toFixed(4)} compute=$${doc.cost.computeUsd.toFixed(4)})`
+    : ""
   console.log(
-    `[video-worker] Complete id=${doc.id} duration=${doc.durationSec.toFixed(2)}s verdict=${doc.criticVerdict}`
+    `[video-worker] Complete id=${doc.id} duration=${doc.durationSec.toFixed(2)}s verdict=${doc.criticVerdict}${costSummary}`
   )
 }
 

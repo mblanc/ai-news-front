@@ -1,12 +1,10 @@
 import { db, getTtlExpirationDate } from "@/lib/firebase"
-import { FieldValue } from "@google-cloud/firestore"
 import type { DigestScope } from "@/lib/types"
+import type { VideoCostBreakdown } from "@/lib/video/cost"
 import {
   assertPrivateGcsObjectPath,
   buildVideoDocId,
   type CriticVerdict,
-  type FeedbackEntry,
-  type FeedbackRating,
   type VideoCategory,
   type VideoDocument,
 } from "@/lib/video/types"
@@ -27,13 +25,13 @@ export interface SaveReadyVideoInput {
   criticVerdict: CriticVerdict
   criticRounds: number
   criticNotes: string
+  cost?: VideoCostBreakdown
 }
 
 export interface VideoFirestoreAdapter {
   setDoc(id: string, data: Record<string, unknown>): Promise<void>
   getDoc(id: string): Promise<Record<string, unknown> | null>
   queryLatestReady(scope: DigestScope, category: VideoCategory): Promise<VideoDocument | null>
-  appendFeedback(id: string, entry: FeedbackEntry): Promise<void>
 }
 
 function hydrateVideoDoc(id: string, raw: Record<string, unknown>): VideoDocument {
@@ -62,9 +60,7 @@ function hydrateVideoDoc(id: string, raw: Record<string, unknown>): VideoDocumen
     criticVerdict: (raw.criticVerdict as CriticVerdict) ?? "NEEDS_REVIEW",
     criticRounds: Number(raw.criticRounds ?? 1),
     criticNotes: String(raw.criticNotes ?? ""),
-    humanFeedback: Array.isArray(raw.humanFeedback)
-      ? (raw.humanFeedback as FeedbackEntry[])
-      : undefined,
+    cost: raw.cost && typeof raw.cost === "object" ? (raw.cost as VideoCostBreakdown) : undefined,
     error: raw.error ? String(raw.error) : undefined,
   }
 }
@@ -82,7 +78,6 @@ export function createDefaultVideoFirestoreAdapter(): VideoFirestoreAdapter {
       return snap.exists ? (snap.data() ?? {}) : null
     },
     async queryLatestReady(scope, category) {
-      // Two equality filters use Firestore zig-zag merge without requiring a custom composite index.
       const snap = await db
         .collection(DIGEST_VIDEOS_COLLECTION)
         .where("digestId", "==", scope)
@@ -94,15 +89,6 @@ export function createDefaultVideoFirestoreAdapter(): VideoFirestoreAdapter {
         .filter((doc) => doc.status === "ready")
         .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt))
       return ready[0] ?? null
-    },
-    async appendFeedback(id, entry) {
-      await db
-        .collection(DIGEST_VIDEOS_COLLECTION)
-        .doc(id)
-        .update({
-          humanFeedback: FieldValue.arrayUnion(entry),
-          updatedAt: FieldValue.serverTimestamp(),
-        })
     },
   }
 }
@@ -134,6 +120,7 @@ export function createDigestVideoRepo(adapter: VideoFirestoreAdapter) {
         criticVerdict: input.criticVerdict,
         criticRounds: input.criticRounds,
         criticNotes: input.criticNotes,
+        ...(input.cost ? { cost: input.cost } : {}),
       }
       await adapter.setDoc(id, doc as unknown as Record<string, unknown>)
       return doc
@@ -144,26 +131,23 @@ export function createDigestVideoRepo(adapter: VideoFirestoreAdapter) {
       return raw ? hydrateVideoDoc(id, raw) : null
     },
 
+    async getReadyForDate(
+      date: string,
+      scope: DigestScope,
+      category: VideoCategory
+    ): Promise<VideoDocument | null> {
+      const id = buildVideoDocId(date, scope, category)
+      const raw = await adapter.getDoc(id)
+      if (!raw) return null
+      const doc = hydrateVideoDoc(id, raw)
+      return doc.status === "ready" && doc.date === date ? doc : null
+    },
+
     async getLatestReady(
       scope: DigestScope,
       category: VideoCategory
     ): Promise<VideoDocument | null> {
       return adapter.queryLatestReady(scope, category)
-    },
-
-    async addFeedback(
-      id: string,
-      feedback: { rating: FeedbackRating; note?: string; updatedBy?: string }
-    ): Promise<FeedbackEntry> {
-      const trimmedNote = feedback.note?.trim().slice(0, 1000)
-      const entry: FeedbackEntry = {
-        rating: feedback.rating,
-        ...(trimmedNote ? { note: trimmedNote } : {}),
-        updatedAt: new Date().toISOString(),
-        ...(feedback.updatedBy ? { updatedBy: feedback.updatedBy } : {}),
-      }
-      await adapter.appendFeedback(id, entry)
-      return entry
     },
   }
 }

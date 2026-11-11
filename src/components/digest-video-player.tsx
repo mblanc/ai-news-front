@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState, useCallback, type FormEvent } from "react"
-import { Play, ChevronUp, ThumbsUp, ThumbsDown, Loader2, Send, Video } from "lucide-react"
+import { useEffect, useState, useCallback } from "react"
+import { Play, ChevronUp, Loader2, Video } from "lucide-react"
 import type { DigestScope, SourceCategory } from "@/lib/types"
 import type { PublicVideoMetadata } from "@/app/api/videos/latest/route"
 
@@ -30,12 +30,6 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
   const [loadingUrls, setLoadingUrls] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
 
-  const [selectedRating, setSelectedRating] = useState<"up" | "down" | null>(null)
-  const [note, setNote] = useState("")
-  const [submittingFeedback, setSubmittingFeedback] = useState(false)
-  const [feedbackSaved, setFeedbackSaved] = useState(false)
-  const [feedbackError, setFeedbackError] = useState<string | null>(null)
-
   const loadSignedUrls = useCallback(async (videoId: string, signal?: AbortSignal) => {
     setLoadingUrls(true)
     setUrlError(null)
@@ -60,6 +54,7 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
   }, [])
 
   useEffect(() => {
+    if (scope !== "daily") return
     const controller = new AbortController()
 
     fetch(
@@ -91,55 +86,6 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
       }
     }
   }, [video, expanded, signedUrls, loadSignedUrls])
-
-  const submitFeedback = async (rating: "up" | "down", submittedNote?: string) => {
-    if (!video || submittingFeedback) return
-    setSubmittingFeedback(true)
-    setFeedbackError(null)
-    setFeedbackSaved(false)
-    try {
-      const res = await fetch(`/api/videos/${encodeURIComponent(video.id)}/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rating,
-          ...(submittedNote?.trim() ? { note: submittedNote.trim() } : {}),
-        }),
-      })
-      if (!res.ok) {
-        throw new Error(`Feedback request failed (${res.status})`)
-      }
-      setVideo((prev) =>
-        prev
-          ? {
-              ...prev,
-              feedbackCount: prev.feedbackCount + 1,
-              upVotes: prev.upVotes + (rating === "up" ? 1 : 0),
-              downVotes: prev.downVotes + (rating === "down" ? 1 : 0),
-            }
-          : prev
-      )
-      setNote("")
-      setFeedbackSaved(true)
-    } catch (err) {
-      setFeedbackError(err instanceof Error ? err.message : "Could not save feedback")
-    } finally {
-      setSubmittingFeedback(false)
-    }
-  }
-
-  const handleRatingClick = (rating: "up" | "down") => {
-    setSelectedRating(rating)
-    if (!note.trim()) {
-      void submitFeedback(rating)
-    }
-  }
-
-  const handleNoteSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    if (!selectedRating) return
-    void submitFeedback(selectedRating, note)
-  }
 
   if (!video) return null
 
@@ -173,37 +119,6 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
             <Video className="h-3 w-3 text-primary shrink-0" />
             <span>{formatDuration(video.durationSec)}</span>
           </span>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => handleRatingClick("up")}
-            disabled={submittingFeedback}
-            aria-label="Thumbs up video briefing"
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors cursor-pointer ${
-              selectedRating === "up"
-                ? "bg-primary/15 border-primary/50 text-primary"
-                : "bg-card border-border/70 text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <ThumbsUp className="h-3 w-3" />
-            <span>{video.upVotes}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleRatingClick("down")}
-            disabled={submittingFeedback}
-            aria-label="Thumbs down video briefing"
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px] transition-colors cursor-pointer ${
-              selectedRating === "down"
-                ? "bg-destructive/15 border-destructive/50 text-destructive"
-                : "bg-card border-border/70 text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <ThumbsDown className="h-3 w-3" />
-            <span>{video.downVotes}</span>
-          </button>
         </div>
       </div>
 
@@ -242,33 +157,6 @@ export function DigestVideoPlayer({ scope, category }: DigestVideoPlayerProps) {
               />
             </div>
           )}
-
-          <form onSubmit={handleNoteSubmit} className="flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              maxLength={1000}
-              placeholder="Optional feedback on this video briefing…"
-              className="flex-1 min-w-[200px] rounded-full border border-border bg-background px-3 py-1.5 font-sans text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <button
-              type="submit"
-              disabled={!selectedRating || !note.trim() || submittingFeedback}
-              className="inline-flex items-center gap-1 rounded-full bg-card hover:bg-muted disabled:opacity-50 border border-border px-3 py-1.5 font-sans text-xs font-medium text-foreground transition-colors cursor-pointer"
-            >
-              <Send className="h-3 w-3" />
-              <span>Send note</span>
-            </button>
-            {feedbackSaved && (
-              <span className="font-mono text-[11px] text-emerald-700 dark:text-emerald-300">
-                Saved
-              </span>
-            )}
-            {feedbackError && (
-              <span className="font-mono text-[11px] text-destructive">{feedbackError}</span>
-            )}
-          </form>
         </div>
       )}
     </div>

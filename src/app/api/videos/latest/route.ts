@@ -1,6 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getDigestVideoRepo } from "@/lib/video/repo"
-import { VIDEO_CATEGORIES, type VideoCategory, type VideoDocument } from "@/lib/video/types"
+import {
+  VIDEO_CATEGORIES,
+  getParisDateString,
+  type VideoCategory,
+  type VideoDocument,
+} from "@/lib/video/types"
 import type { DigestScope } from "@/lib/types"
 
 const VALID_SCOPES: ReadonlySet<DigestScope> = new Set(["daily", "weekly", "monthly", "overview"])
@@ -15,20 +20,11 @@ export interface PublicVideoMetadata {
   insightCount: number
   durationSec: number
   lufs: number
-  criticVerdict: VideoDocument["criticVerdict"]
-  criticNotes: string
-  criticRounds: number
-  feedbackCount: number
-  upVotes: number
-  downVotes: number
+  costUsd?: number
   generatedAt: string
 }
 
 export function toPublicVideoMetadata(doc: VideoDocument): PublicVideoMetadata {
-  const entries = doc.humanFeedback ?? []
-  const upVotes = entries.filter((item) => item.rating === "up").length
-  const downVotes = entries.filter((item) => item.rating === "down").length
-
   return {
     id: doc.id,
     digestId: doc.digestId,
@@ -38,18 +34,18 @@ export function toPublicVideoMetadata(doc: VideoDocument): PublicVideoMetadata {
     insightCount: doc.insightCount,
     durationSec: doc.durationSec,
     lufs: doc.lufs,
-    criticVerdict: doc.criticVerdict,
-    criticNotes: doc.criticNotes,
-    criticRounds: doc.criticRounds,
-    feedbackCount: entries.length,
-    upVotes,
-    downVotes,
+    ...(doc.cost ? { costUsd: doc.cost.totalUsd } : {}),
     generatedAt: doc.generatedAt,
   }
 }
 
 export interface LatestVideoDeps {
-  getLatestReady?: (digestId: DigestScope, category: VideoCategory) => Promise<VideoDocument | null>
+  todayDateStr?: string
+  getReadyForDate?: (
+    date: string,
+    digestId: DigestScope,
+    category: VideoCategory
+  ) => Promise<VideoDocument | null>
 }
 
 export async function handleLatestVideoRequest(req: NextRequest, deps: LatestVideoDeps = {}) {
@@ -63,14 +59,20 @@ export async function handleLatestVideoRequest(req: NextRequest, deps: LatestVid
     return NextResponse.json({ error: `Invalid category: ${categoryRaw}` }, { status: 400 })
   }
 
-  try {
-    const getLatestReady =
-      deps.getLatestReady ??
-      ((scope, category) => getDigestVideoRepo().getLatestReady(scope, category))
-    const doc = await getLatestReady(scopeRaw as DigestScope, categoryRaw as VideoCategory)
+  // Videos are strictly daily briefings; never display non-daily scopes or stale prior-day videos.
+  if (scopeRaw !== "daily") {
+    return NextResponse.json({ error: "No video available for scope" }, { status: 404 })
+  }
 
-    if (!doc) {
-      return NextResponse.json({ error: "No ready video found" }, { status: 404 })
+  try {
+    const today = deps.todayDateStr ?? getParisDateString()
+    const getReadyForDate =
+      deps.getReadyForDate ??
+      ((date, scope, category) => getDigestVideoRepo().getReadyForDate(date, scope, category))
+    const doc = await getReadyForDate(today, "daily", categoryRaw as VideoCategory)
+
+    if (!doc || doc.date !== today) {
+      return NextResponse.json({ error: "No ready video found for today" }, { status: 404 })
     }
 
     return NextResponse.json(

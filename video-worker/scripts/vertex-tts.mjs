@@ -64,7 +64,20 @@ async function synthesizeOne(ai, { text, out, voice = "Charon" }) {
   }
 
   const durationSec = await probeDuration(out)
-  return { out, mime, durationSec }
+  const promptTokens = Number(res.usageMetadata?.promptTokenCount ?? Math.ceil(text.length / 4))
+  const audioOutputTokens = Number(
+    res.usageMetadata?.candidatesTokenCount ?? Math.ceil(durationSec * 25)
+  )
+  return {
+    out,
+    mime,
+    durationSec,
+    usage: {
+      promptTokens,
+      audioOutputTokens,
+      characters: text.length,
+    },
+  }
 }
 
 async function main() {
@@ -76,11 +89,25 @@ async function main() {
   const ai = new GoogleGenAI({ vertexai: true, project, location: "global" })
 
   if (args.batch) {
-    const items = JSON.parse(await fs.readFile(args.batch, "utf8"))
+    const batchPath = path.resolve(args.batch)
+    const items = JSON.parse(await fs.readFile(batchPath, "utf8"))
     const results = await Promise.all(
       items.map((item) =>
         synthesizeOne(ai, { ...item, voice: item.voice || args.voice || "Charon" })
       )
+    )
+    const totals = results.reduce(
+      (acc, r) => ({
+        promptTokens: acc.promptTokens + r.usage.promptTokens,
+        audioOutputTokens: acc.audioOutputTokens + r.usage.audioOutputTokens,
+        characters: acc.characters + r.usage.characters,
+      }),
+      { promptTokens: 0, audioOutputTokens: 0, characters: 0 }
+    )
+    await fs.writeFile(
+      path.join(path.dirname(batchPath), "tts-usage.json"),
+      JSON.stringify(totals, null, 2),
+      "utf8"
     )
     console.log(JSON.stringify(results, null, 2))
     return

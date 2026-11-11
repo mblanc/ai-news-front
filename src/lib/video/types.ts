@@ -1,5 +1,6 @@
 import { z } from "zod"
 import type { DigestScope, SourceCategory } from "@/lib/types"
+import type { VideoCostBreakdown } from "@/lib/video/cost"
 
 export const VIDEO_CATEGORIES: readonly (SourceCategory | "all")[] = [
   "all",
@@ -13,14 +14,6 @@ export const VIDEO_CATEGORIES: readonly (SourceCategory | "all")[] = [
 export type VideoCategory = (typeof VIDEO_CATEGORIES)[number]
 export type CriticVerdict = "OURS WINS" | "NEEDS_REVIEW"
 export type VideoStatus = "rendering" | "ready" | "failed"
-export type FeedbackRating = "up" | "down"
-
-export interface FeedbackEntry {
-  rating: FeedbackRating
-  note?: string
-  updatedAt: string
-  updatedBy?: string
-}
 
 export interface VideoDocument {
   id: string
@@ -39,7 +32,7 @@ export interface VideoDocument {
   criticVerdict: CriticVerdict
   criticRounds: number
   criticNotes: string
-  humanFeedback?: FeedbackEntry[]
+  cost?: VideoCostBreakdown
   error?: string
 }
 
@@ -65,6 +58,17 @@ export function resolveCategoryFromTaskIndex(taskIndex: number): VideoCategory {
     )
   }
   return VIDEO_CATEGORIES[taskIndex]
+}
+
+export function getParisDateString(date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date)
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? ""
+  return `${get("year")}-${get("month")}-${get("day")}`
 }
 
 export function buildVideoDocId(

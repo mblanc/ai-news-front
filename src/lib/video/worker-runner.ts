@@ -6,6 +6,11 @@ import { promisify } from "node:util"
 import type { Digest } from "@/lib/types"
 import { getLatestDigest } from "@/lib/firebase"
 import { createDefaultGcpAuthProvider, type GcpAuthProvider } from "@/lib/video/gcp-auth"
+import {
+  computeVideoGenerationCost,
+  type AgyTokenUsage,
+  type TtsTokenUsage,
+} from "@/lib/video/cost"
 import { getDigestVideoRepo } from "@/lib/video/repo"
 import {
   resolveCategoryFromTaskIndex,
@@ -24,9 +29,21 @@ interface AgyResultEnvelope {
   error?: string
   response?: string
   structured_output?: unknown
+  duration_seconds?: number
+  usage?: {
+    input_tokens?: number
+    cache_read_tokens?: number
+    output_tokens?: number
+    thinking_tokens?: number
+  }
 }
 
-export function parseAgyStreamResult(rawOutput: string): AgyResult {
+export interface ParsedAgyStreamOutput {
+  result: AgyResult
+  usage: AgyTokenUsage
+}
+
+export function parseAgyStreamOutput(rawOutput: string): ParsedAgyStreamOutput {
   const lines = rawOutput
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -58,18 +75,84 @@ export function parseAgyStreamResult(rawOutput: string): AgyResult {
     )
   }
 
-  if (envelope.structured_output) {
-    return validateAgyResult(envelope.structured_output)
+  const usage: AgyTokenUsage = {
+    inputTokens: Number(envelope.usage?.input_tokens ?? 0),
+    cacheReadTokens: Number(envelope.usage?.cache_read_tokens ?? 0),
+    outputTokens: Number(envelope.usage?.output_tokens ?? 0),
+    thinkingTokens: Number(envelope.usage?.thinking_tokens ?? 0),
+    durationSeconds: Number(envelope.duration_seconds ?? 0),
   }
-  if (typeof envelope.response === "string") {
+
+  let result: AgyResult
+  if (envelope.structured_output) {
+    result = validateAgyResult(envelope.structured_output)
+  } else if (typeof envelope.response === "string") {
     const cleaned = envelope.response
       .trim()
       .replace(/^```json\s*/i, "")
       .replace(/```$/i, "")
       .trim()
-    return validateAgyResult(JSON.parse(cleaned))
+    result = validateAgyResult(JSON.parse(cleaned))
+  } else {
+    result = validateAgyResult(envelope)
   }
-  return validateAgyResult(envelope)
+
+  return { result, usage }
+}
+
+export function parseAgyStreamResult(rawOutput: string): AgyResult {
+  return parseAgyStreamOutput(rawOutput).result
+}
+
+/**
+ * Sums token counts across all parent + subagent conversation transcripts in a Jetski brain directory.
+ */
+export async function sumBrainTranscriptUsage(
+  brainDir: string
+): Promise<Omit<AgyTokenUsage, "durationSeconds"> | null> {
+  try {
+    const entries = await fs.readdir(brainDir, { withFileTypes: true })
+    let inputTokens = 0
+    let cacheReadTokens = 0
+    let outputTokens = 0
+    let foundAny = false
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const transcriptPath = path.join(
+        brainDir,
+        entry.name,
+        ".system_generated",
+        "logs",
+        "transcript.jsonl"
+      )
+      try {
+        const raw = await fs.readFile(transcriptPath, "utf8")
+        for (const line of raw.split(/\r?\n/)) {
+          if (!line.trim()) continue
+          const step = JSON.parse(line) as {
+            type?: string
+            input_tokens?: number
+            cache_read_tokens?: number
+            output_tokens?: number
+          }
+          if (step.type === "PLANNER_RESPONSE") {
+            inputTokens += Number(step.input_tokens ?? 0)
+            cacheReadTokens += Number(step.cache_read_tokens ?? 0)
+            outputTokens += Number(step.output_tokens ?? 0)
+            foundAny = true
+          }
+        }
+      } catch {
+        // Ignore non-conversation directories
+      }
+    }
+
+    if (!foundAny) return null
+    return { inputTokens, cacheReadTokens, outputTokens, thinkingTokens: 0 }
+  } catch {
+    return null
+  }
 }
 
 export function parseEbur128IntegratedLufs(stderr: string): number {
@@ -191,6 +274,12 @@ export interface UploadedArtifacts {
   gcsManifestPath?: string
 }
 
+export interface AgyRunOutput extends AgyResult {
+  agyUsage?: AgyTokenUsage
+  ttsUsage?: TtsTokenUsage
+  model?: string
+}
+
 export interface WorkerRunnerDeps {
   createWorkDir(): Promise<string>
   removeWorkDir(dir: string): Promise<void>
@@ -201,7 +290,7 @@ export interface WorkerRunnerDeps {
     digest: Digest
     category: VideoCategory
     dateStr: string
-  }): Promise<AgyResult>
+  }): Promise<AgyRunOutput>
   verifyAndMasterMedia(mp4Path: string, projectDir: string, workDir: string): Promise<MasteredMedia>
   uploadArtifacts(args: {
     dateStr: string
@@ -216,6 +305,7 @@ export async function executeWorkerTask(
   params: { taskIndex: number; dateStr: string },
   deps: WorkerRunnerDeps
 ): Promise<VideoDocument> {
+  const startedAtMs = Date.now()
   const category = resolveCategoryFromTaskIndex(params.taskIndex)
   const workDir = await deps.createWorkDir()
 
@@ -241,9 +331,14 @@ export async function executeWorkerTask(
       "utf8"
     )
 
-    const agyResult = validateAgyResult(
-      await deps.runAgyHeadless({ workDir, briefPath, digest, category, dateStr: params.dateStr })
-    )
+    const rawAgy = await deps.runAgyHeadless({
+      workDir,
+      briefPath,
+      digest,
+      category,
+      dateStr: params.dateStr,
+    })
+    const agyResult = validateAgyResult(rawAgy)
 
     const mastered = await deps.verifyAndMasterMedia(
       agyResult.mp4Path,
@@ -267,6 +362,18 @@ export async function executeWorkerTask(
       sourcesManifestPath: agyResult.sourcesManifestPath,
     })
 
+    const wallDurationSec = Math.max(0.1, (Date.now() - startedAtMs) / 1000)
+    const cost = computeVideoGenerationCost({
+      model: rawAgy.model || process.env.VIDEO_AGENT_MODEL || "gemini-3.8-flash-medium",
+      wallDurationSec,
+      agyUsage: rawAgy.agyUsage,
+      ttsUsage: rawAgy.ttsUsage ?? {
+        promptTokens: 350,
+        audioOutputTokens: Math.ceil(mastered.durationSec * 25),
+        characters: 0,
+      },
+    })
+
     return await deps.videoRepo.saveReady({
       date: params.dateStr,
       digestId: "daily",
@@ -281,6 +388,7 @@ export async function executeWorkerTask(
       criticVerdict: agyResult.criticVerdict,
       criticRounds: agyResult.criticRounds,
       criticNotes: agyResult.criticNotes,
+      cost,
     })
   } finally {
     await deps.removeWorkDir(workDir)
@@ -377,13 +485,14 @@ export function createDefaultWorkerRunnerDeps(
         `- Date: ${dateStr}`,
       ].join("\n")
 
+      const model = process.env.VIDEO_AGENT_MODEL || "gemini-3.8-flash-medium"
       const quotaProject = await auth.getProjectId()
       const stdout = await runAgyStreaming(
         [
           "-p",
           prompt,
           "--model",
-          process.env.VIDEO_AGENT_MODEL || "gemini-3.8-flash-medium",
+          model,
           "--effort",
           process.env.VIDEO_AGENT_EFFORT || "medium",
           "--dangerously-skip-permissions",
@@ -404,7 +513,28 @@ export function createDefaultWorkerRunnerDeps(
         2_500_000
       )
 
-      return parseAgyStreamResult(stdout)
+      const { result, usage: envelopeUsage } = parseAgyStreamOutput(stdout)
+      const brainDir = path.join(os.homedir(), ".gemini", "jetski", "brain")
+      const brainUsage = await sumBrainTranscriptUsage(brainDir)
+      const usage: AgyTokenUsage = brainUsage
+        ? {
+            inputTokens: Math.max(envelopeUsage.inputTokens, brainUsage.inputTokens),
+            cacheReadTokens: Math.max(envelopeUsage.cacheReadTokens, brainUsage.cacheReadTokens),
+            outputTokens: Math.max(envelopeUsage.outputTokens, brainUsage.outputTokens),
+            thinkingTokens: envelopeUsage.thinkingTokens,
+            durationSeconds: envelopeUsage.durationSeconds,
+          }
+        : envelopeUsage
+
+      let ttsUsage: TtsTokenUsage | undefined
+      try {
+        const rawTts = await fs.readFile(path.join(result.projectDir, "tts-usage.json"), "utf8")
+        ttsUsage = JSON.parse(rawTts) as TtsTokenUsage
+      } catch {
+        // Fallback estimation handled in computeVideoGenerationCost
+      }
+
+      return { ...result, agyUsage: usage, ttsUsage, model }
     },
 
     async verifyAndMasterMedia(mp4Path, projectDir, workDir) {

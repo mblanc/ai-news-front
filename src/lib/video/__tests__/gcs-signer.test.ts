@@ -23,7 +23,6 @@ function makeReadyVideo(): VideoDocument {
     criticVerdict: "OURS WINS",
     criticNotes: "Strong contrast and pacing.",
     criticRounds: 2,
-    humanFeedback: [{ rating: "up", note: "Crisp charts", updatedAt: "2026-11-11T09:10:00Z" }],
     generatedAt: "2026-11-11T08:05:00Z",
   }
 }
@@ -78,12 +77,32 @@ describe("mintV4SignedUrl", () => {
 })
 
 describe("GET /api/videos/latest", () => {
-  it("returns 404 when no ready video exists for scope/category", async () => {
+  it("returns 404 when no ready video exists for today", async () => {
     const req = new NextRequest(
       "http://localhost:3000/api/videos/latest?scope=daily&category=genmedia"
     )
     const res = await handleLatestVideoRequest(req, {
-      getLatestReady: vi.fn(async () => null),
+      todayDateStr: "2026-11-11",
+      getReadyForDate: vi.fn(async () => null),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it("returns 404 when available video is from yesterday instead of today", async () => {
+    const staleDoc = { ...makeReadyVideo(), id: "2026-11-10_daily_all", date: "2026-11-10" }
+    const req = new NextRequest("http://localhost:3000/api/videos/latest?scope=daily&category=all")
+    const res = await handleLatestVideoRequest(req, {
+      todayDateStr: "2026-11-11",
+      getReadyForDate: vi.fn(async () => staleDoc),
+    })
+    expect(res.status).toBe(404)
+  })
+
+  it("returns 404 for non-daily scopes such as weekly", async () => {
+    const req = new NextRequest("http://localhost:3000/api/videos/latest?scope=weekly&category=all")
+    const res = await handleLatestVideoRequest(req, {
+      todayDateStr: "2026-11-11",
+      getReadyForDate: vi.fn(async () => makeReadyVideo()),
     })
     expect(res.status).toBe(404)
   })
@@ -93,24 +112,25 @@ describe("GET /api/videos/latest", () => {
       "http://localhost:3000/api/videos/latest?scope=daily&category=bogus"
     )
     const res = await handleLatestVideoRequest(req, {
-      getLatestReady: vi.fn(async () => null),
+      todayDateStr: "2026-11-11",
+      getReadyForDate: vi.fn(async () => null),
     })
     expect(res.status).toBe(400)
   })
 
-  it("returns 200 public video metadata when ready video exists", async () => {
+  it("returns 200 public video metadata when today's ready video exists", async () => {
     const doc = makeReadyVideo()
     const req = new NextRequest("http://localhost:3000/api/videos/latest?scope=daily&category=all")
     const res = await handleLatestVideoRequest(req, {
-      getLatestReady: vi.fn(async () => doc),
+      todayDateStr: "2026-11-11",
+      getReadyForDate: vi.fn(async () => doc),
     })
     expect(res.status).toBe(200)
     const body = (await res.json()) as {
-      video: { id: string; criticVerdict: string; feedbackCount: number; gcsVideoPath?: string }
+      video: { id: string; date: string; gcsVideoPath?: string }
     }
     expect(body.video.id).toBe(doc.id)
-    expect(body.video.criticVerdict).toBe("OURS WINS")
-    expect(body.video.feedbackCount).toBe(1)
+    expect(body.video.date).toBe("2026-11-11")
     expect(body.video.gcsVideoPath).toBeUndefined()
   })
 })
