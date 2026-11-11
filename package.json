@@ -15,7 +15,8 @@
     "preflight": "npm run format && npm run check && npm run lint && npm run test",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "video:run": "npx tsx video-worker/entrypoint.ts"
   },
   "dependencies": {
     "@google-cloud/firestore": "^8.6.0",

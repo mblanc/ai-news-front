@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react"
 import { ExternalLink, Clock, ArrowRight, RotateCcw, Sparkles } from "lucide-react"
+import { DigestVideoPlayer } from "@/components/digest-video-player"
 import type { Digest, DigestScope, SourceCategory } from "@/lib/types"
 
 interface DigestData extends Omit<Digest, "generatedAt"> {
@@ -365,6 +366,12 @@ export function DailyDigest({ category = "all" }: DailyDigestProps) {
               {digest.headline}
             </h3>
           )}
+
+          <DigestVideoPlayer
+            key={`${activeScope}-${currentCategory}`}
+            scope={activeScope}
+            category={currentCategory}
+          />
 
           {digest.insights.length > 0 && (
             <ul className="space-y-2.5 border-t border-border/60 pt-2.5">

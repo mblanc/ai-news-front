@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Daily Briefing</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Plus Jakarta Sans";
+        font-weight: 400;
+        src: url("assets/fonts/plus-jakarta-sans-400.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Plus Jakarta Sans";
+        font-weight: 500;
+        src: url("assets/fonts/plus-jakarta-sans-500.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Plus Jakarta Sans";
+        font-weight: 600;
+        src: url("assets/fonts/plus-jakarta-sans-600.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Plus Jakarta Sans";
+        font-weight: 700;
+        src: url("assets/fonts/plus-jakarta-sans-700.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        font-weight: 500;
+        src: url("assets/fonts/jetbrains-mono-500.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "JetBrains Mono";
+        font-weight: 700;
+        src: url("assets/fonts/jetbrains-mono-700.woff2") format("woff2");
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body,
+      #root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f8f9fa;
+        font-family: "Plus Jakarta Sans", sans-serif;
+        color: #1a1c1e;
+      }
+      .scene-slot {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+      }
+      .scene-host {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #slot-01 {
+        z-index: 1;
+      }
+      #slot-02 {
+        z-index: 2;
+      }
+      #progress-rail {
+        position: absolute;
+        left: 120px;
+        right: 120px;
+        bottom: 44px;
+        height: 2px;
+        background: rgba(128, 134, 139, 0.24);
+        z-index: 20;
+        pointer-events: none;
+      }
+      #progress-fill {
+        width: 100%;
+        height: 100%;
+        background: #1473f2;
+        transform-origin: left center;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="master"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="28.0"
+    >
+      <div id="slot-01" class="scene-slot">
+        <div
+          class="scene-host"
+          data-track-kind="graphics"
+          data-track-index="1"
+          data-composition-id="scene-01"
+          data-composition-src="compositions/01-intro.html"
+          data-start="0"
+          data-duration="12.5"
+          data-width="1920"
+          data-height="1080"
+        ></div>
+      </div>
+      <div id="slot-02" class="scene-slot">
+        <div
+          class="scene-host"
+          data-track-kind="graphics"
+          data-track-index="2"
+          data-composition-id="scene-02"
+          data-composition-src="compositions/02-story.html"
+          data-start="12.0"
+          data-duration="16.0"
+          data-width="1920"
+          data-height="1080"
+        ></div>
+      </div>
+      <div id="progress-rail"><div id="progress-fill"></div></div>
+      <audio
+        id="vo-01"
+        src="assets/audio/scene-01.wav"
+        data-start="0.30"
+        data-duration="11.00"
+        data-volume="1.0"
+        data-track-index="7"
+      ></audio>
+      <audio
+        id="vo-02"
+        src="assets/audio/scene-02.wav"
+        data-start="12.45"
+        data-duration="14.50"
+        data-volume="1.0"
+        data-track-index="7"
+      ></audio>
+      <audio
+        id="sfx-t1"
+        src="assets/sfx/soft-whoosh.wav"
+        data-start="12.00"
+        data-duration="0.40"
+        data-volume="0.16"
+        data-track-index="8"
+      ></audio>
+      <script>
+        const tl = gsap.timeline({ paused: true })
+        tl.fromTo("#progress-fill", { scaleX: 0 }, { scaleX: 1, duration: 28.0, ease: "none" }, 0)
+        tl.set("#slot-02", { x: 1920, opacity: 1 }, 0)
+        tl.fromTo("#slot-01", { x: 0 }, { x: -480, duration: 0.42, ease: "power3.inOut" }, 12.0)
+        tl.fromTo("#slot-02", { x: 1920 }, { x: 0, duration: 0.42, ease: "power3.inOut" }, 12.0)
+        window.__timelines["master"] = tl
+      </script>
+    </div>
+  </body>
+</html>

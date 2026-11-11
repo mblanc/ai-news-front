@@ -11,7 +11,7 @@ Automate daily `09:00 Europe/Paris` generation of 6 narrated Swiss/Material 3 di
 
 ## Architecture Decisions
 
-1. **Fail-Fast Container Auth Gate (Task 1 first)**: Validate `agy -p` headless auth inside `node:26-bookworm-slim` (`AGY_ADC_AUTH=true` vs. Secret Manager OAuth bundle) *before* writing downstream worker logic.
+1. **Fail-Fast Container Auth Gate (Task 1 first)**: Validate `agy -p` headless auth inside `node:26-bookworm-slim` (`AGY_ADC_AUTH=true` vs. Secret Manager OAuth bundle) _before_ writing downstream worker logic.
 2. **Parallel Cloud Run Job Array (`tasks=6`)**: `POST /api/cron/video` spawns one Cloud Run Job execution with `taskCount: 6`; each container reads `CLOUD_RUN_TASK_INDEX` (`0..5`) -> `VIDEO_CATEGORIES[idx]`, preventing sequential 30+ minute runs and isolating failures per category.
 3. **Antigravity Core + Deterministic Envelope**: `agy -p` handles creative authoring (`hyperframes*` / `media-use` skills + `gauntlet-critic` blind visual loop), while tested TypeScript wrappers own Firestore I/O, `--json-schema` parsing, `ffprobe` (`<= 120s`), `ffmpeg loudnorm` (`-16 LUFS`), private GCS upload, and guaranteed publish of the latest valid candidate (`"OURS WINS"` or `"NEEDS_REVIEW"`).
 4. **Private Bucket + Server-Signed URLs**: Store only `gcsVideoPath` / `gcsPosterPath` in Firestore `digest_videos`; mint short-lived V4 signed URLs dynamically on the server via IAM `signBlob`.
@@ -45,7 +45,7 @@ Task 5: `cloud-run-jobs.ts` +
 Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-0 e2e check
 ```
 
-*(Once Task 2 lands, Task 3/4/5 [Worker side] and Task 6/7 [Web/API/UI side] can run cleanly in parallel!)*
+_(Once Task 2 lands, Task 3/4/5 [Worker side] and Task 6/7 [Web/API/UI side] can run cleanly in parallel!)_
 
 ---
 
@@ -54,14 +54,14 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 ### Phase 1: Foundation & Risk De-Risking
 
 #### Task 1: Debian Worker Container & Headless `agy -p` Auth Smoke Test
+
 - **Description:** Create `Dockerfile.video-worker` based on `node:26-bookworm-slim` installing `ffmpeg`, headless Chromium dependencies, pinned `hyperframes`, and the Antigravity CLI (`agy`). Verify locally that `agy -p` authenticates and executes non-interactively inside Linux (`AGY_ADC_AUTH=true` vs. Secret Manager OAuth config) and can invoke `npx hyperframes --version`.
 - **Acceptance criteria:**
   - [ ] `Dockerfile.video-worker` builds cleanly for `linux/amd64` without errors.
   - [ ] `docker run` confirms `ffmpeg -version`, `npx hyperframes --version`, and headless Chromium probe succeed.
   - [ ] Documented headless `agy -p` auth mode verified (`AGY_ADC_AUTH=true` succeeds or Secret Manager ~/.gemini mount documented as fallback).
 - **Verification:**
-  - [ ] Build succeeds: `docker build -f Dockerfile.video-worker -t ai-news-video-worker:dev .`
-  - [ ] Manual check: `docker run --rm ... ai-news-video-worker:dev agy -p "Reply OK" --mode auto --dangerously-skip-permissions --output-format json` returns exit 0.
+  - [x] Build & ADC smoke test: `gcloud builds submit --config=cloudbuild.video-worker.yaml .` + verify `ffmpeg`, `npx hyperframes --version`, headless Chromium probe, and `AGY_ADC_AUTH=true GOOGLE_CLOUD_QUOTA_PROJECT=svc-demo-vertex GOOGLE_CLOUD_LOCATION=global agy -p "Reply OK" --model gemini-3.8-flash-medium --dangerously-skip-permissions --output-format json`.
 - **Dependencies:** None
 - **Files likely touched:**
   - `Dockerfile.video-worker`
@@ -69,6 +69,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 - **Estimated scope:** S (2 files)
 
 #### Task 2: Video Domain Types & Firestore `digest_videos` Repository
+
 - **Description:** Define shared TypeScript contracts (`VIDEO_CATEGORIES`, `VideoDocument`, `AgyResult`, `FeedbackEntry`) and extend Firestore persistence with clean repository helpers (`saveDigestVideo`, `getLatestDigestVideo`, `getDigestVideoById`, `appendVideoFeedback`) plus offline unit tests using an injected Firestore mock.
 - **Acceptance criteria:**
   - [ ] `VIDEO_CATEGORIES` maps indices `0..5` deterministically to `all`, `ai-engineering`, `frontier-research`, `genmedia`, `ecosystem-analysis`, `industry-news`.
@@ -85,6 +86,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 - **Estimated scope:** M (3 files)
 
 #### Checkpoint: Foundation
+
 - [ ] Container auth & binaries verified (`Task 1`)
 - [ ] `npm run check && npm run lint && npm run test` pass cleanly (`Task 2`)
 
@@ -93,6 +95,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 ### Phase 2: Worker Pipeline (`agy -p` Harness & Cloud Run Trigger)
 
 #### Task 3: Baked Prompts, Output Schema, Critic Agent & Offline Assets
+
 - **Description:** Assemble the headless worker knowledge kit (`video-worker/prompts/daily-briefing.md`, `video-worker/schemas/agy-result.schema.json`, `video-worker/agents/gauntlet-critic.md`) and bake offline fonts (`.woff2`), SFX (`.mp3`), `DESIGN.md`, reference stills (`ref-*.png`), and `hyperframes*` / `media-use` skills into `Dockerfile.video-worker`.
 - **Acceptance criteria:**
   - [ ] `agy-result.schema.json` strictly requires `projectDir`, `mp4Path`, `criticVerdict` (`"OURS WINS" | "NEEDS_REVIEW"`), `criticRounds` (`<= 3`), `criticNotes`, and `sourcesManifestPath`.
@@ -110,6 +113,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 - **Estimated scope:** M (4 files)
 
 #### Task 4: Deterministic Worker Runner & `entrypoint.ts`
+
 - **Description:** Build `src/lib/video/worker-runner.ts` and `video-worker/entrypoint.ts` behind dependency-injected adapters (`digestRepo`, `agy`, `media`, `storage`, `videoRepo`): fetch category digest, run `agy -p --print-timeout 600s`, enforce hard technical invariants (`ffprobe` streams, `durationSec <= 120`), apply `ffmpeg loudnorm=I=-16:TP=-1:LRA=11` + poster frame capture, upload to GCS, save `ready` doc even when `criticVerdict === "NEEDS_REVIEW"`, and clean up `/tmp/job-*`.
 - **Acceptance criteria:**
   - [ ] Fails cleanly without overwriting previous `ready` video if `agy -p` exits non-zero, MP4 is missing/corrupt, or `durationSec > 120`.
@@ -128,6 +132,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 - **Estimated scope:** M (4 files)
 
 #### Task 5: Cloud Run Job Launcher & `/api/cron/video` Endpoint
+
 - **Description:** Implement `src/lib/video/cloud-run-jobs.ts` (triggering `ai-news-video-worker` via Cloud Run Admin API v2 with `taskCount: 6` and optional `scope` / `date` overrides) and expose `POST /api/cron/video` secured by `CRON_SECRET` (`Bearer` / `x-cron-secret`, mirroring `src/app/api/cron/digest/route.ts`).
 - **Acceptance criteria:**
   - [ ] Missing/invalid `CRON_SECRET` returns `401`.
@@ -144,6 +149,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 - **Estimated scope:** M (3 files)
 
 #### Checkpoint: Worker Pipeline
+
 - [ ] All worker & cron unit tests pass cleanly
 - [ ] `npm run preflight` passes with 0 errors
 
@@ -152,6 +158,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 ### Phase 3: Server-Signed URLs, Cartouche UI & GCP Rollout
 
 #### Task 6: Private GCS V4 Signer & Read API Routes (`/api/videos/latest` + `/api/videos/[id]/url`)
+
 - **Description:** Implement injectable `@google-cloud/storage` V4 URL signer (`src/lib/video/gcs-signer.ts`, using Service Account IAM `signBlob` on Cloud Run without key files, TTL `3600s`) and Next.js routes returning latest `ready` metadata (`GET /api/videos/latest`) and fresh signed playback/poster URLs (`GET /api/videos/[id]/url`).
 - **Acceptance criteria:**
   - [ ] `/api/videos/latest?scope=daily&category=<cat>` returns `404` (clean empty signal) when no `ready` video exists, or metadata + `criticVerdict`.
@@ -169,6 +176,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 - **Estimated scope:** M (4 files)
 
 #### Task 7: Human Feedback Route & Daily Digest Cartouche Player (`daily-digest.tsx`)
+
 - **Description:** Add `POST /api/videos/[id]/feedback` storing `{ rating, note }` in Firestore `digest_videos`, build `src/components/digest-video-player.tsx` (poster preview, expandable `16:9` `<video controls>`, duration/critic badge, thumbs up/down + optional note UI), and integrate it inside [src/components/daily-digest.tsx](file:///Users/mblanc/projects/ai-news-front/src/components/daily-digest.tsx) when a `ready` video exists for the active category/scope.
 - **Acceptance criteria:**
   - [ ] Switching category tabs updates or hides the cartouche video cleanly with zero layout flash when unavailable.
@@ -187,6 +195,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 - **Estimated scope:** M (4 files)
 
 #### Task 8: GCP Provisioning, Daily `09:00 Europe/Paris` Scheduler & Live E2E Smoke Run
+
 - **Description:** Configure private GCS bucket + lifecycle rule (`VIDEO_GCS_BUCKET`), IAM roles (`roles/iam.serviceAccountTokenCreator` on web SA for `signBlob`, `roles/run.developer`, `roles/aiplatform.user`, `roles/datastore.user`, `roles/storage.objectAdmin` on worker SA), deploy `ai-news-video-worker` Cloud Run Job, add Cloud Scheduler job `ai-news-video-daily` (`0 9 * * *` `Europe/Paris`), and execute a single live `CLOUD_RUN_TASK_INDEX=0` smoke run verifying end-to-end playback in the app.
 - **Acceptance criteria:**
   - [ ] Private GCS bucket denies anonymous `curl` access while signed URL plays cleanly in browser.
@@ -202,6 +211,7 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 - **Estimated scope:** S (2 repo files + GCP config)
 
 #### Checkpoint: Complete
+
 - [ ] `npm run preflight` passes (`format`, `check`, `lint`, `test`)
 - [ ] Production web build (`npm run build`) succeeds
 - [ ] Live Task 0 verified in GCP + Daily Digest cartouche
@@ -210,9 +220,9 @@ Task 8: GCP IAM, Cloud Run Job deploy, Cloud Scheduler (`0 9 * * *`), live Task-
 
 ## Risks & Mitigations
 
-| Risk | Impact | Mitigation |
-| :--- | :--- | :--- |
-| **`agy -p` headless auth requires interactive OAuth token instead of pure Service Account ADC on Linux** | High (blocks unattended Cloud Run Job) | Run **Task 1 Milestone 0** container auth check immediately before Tasks 3–5; fall back to mounting Secret Manager OAuth creds into `~/.gemini/` if needed. |
-| **Vertex `gemini-3.8-flash-tts` / Gemini quota spikes when 6 tasks run simultaneously at 09:00 Paris** | Medium (HTTP 429 on concurrent TTS/LLM calls) | Configure retry/backoff inside TTS calls and cap Cloud Run Job `maxRetries: 1` or `--parallelism=3` across `tasks=6` if 429s occur. |
-| **Cloud Run IAM `signBlob` permission missing on Next.js SA breaks signed URLs** | Medium (video fails to load in cartouche) | Explicit Task 8 IAM verification granting `roles/iam.serviceAccountTokenCreator` to web SA on itself + Task 6 unit tests. |
-| **Category digest has fewer insights or no scraped charts on quiet news days** | Low (thin scenes or >120s risk) | Enforce adaptive timing (2–5 scenes based on insight count) + deterministic `durationSec <= 120` guard in `worker-runner.ts`. |
+| Risk                                                                                                     | Impact                                        | Mitigation                                                                                                                                                  |
+| :------------------------------------------------------------------------------------------------------- | :-------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`agy -p` headless auth requires interactive OAuth token instead of pure Service Account ADC on Linux** | High (blocks unattended Cloud Run Job)        | Run **Task 1 Milestone 0** container auth check immediately before Tasks 3–5; fall back to mounting Secret Manager OAuth creds into `~/.gemini/` if needed. |
+| **Vertex `gemini-3.8-flash-tts` / Gemini quota spikes when 6 tasks run simultaneously at 09:00 Paris**   | Medium (HTTP 429 on concurrent TTS/LLM calls) | Configure retry/backoff inside TTS calls and cap Cloud Run Job `maxRetries: 1` or `--parallelism=3` across `tasks=6` if 429s occur.                         |
+| **Cloud Run IAM `signBlob` permission missing on Next.js SA breaks signed URLs**                         | Medium (video fails to load in cartouche)     | Explicit Task 8 IAM verification granting `roles/iam.serviceAccountTokenCreator` to web SA on itself + Task 6 unit tests.                                   |
+| **Category digest has fewer insights or no scraped charts on quiet news days**                           | Low (thin scenes or >120s risk)               | Enforce adaptive timing (2–5 scenes based on insight count) + deterministic `durationSec <= 120` guard in `worker-runner.ts`.                               |

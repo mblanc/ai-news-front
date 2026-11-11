@@ -22,8 +22,8 @@
 2. **Container Base**: `node:26-bookworm-slim` (instead of Alpine) because `hyperframes` and headless Chromium require glibc.
 3. **IAM & Auth**:
    - Web service SA (`ai-news-front`) gets `roles/run.developer` (execute video worker job), `roles/storage.objectViewer`, and `roles/iam.serviceAccountTokenCreator` (self-signing GCS V4 signed URLs without private JSON key files).
-   - Video worker SA (`ai-news-video-worker`) gets `roles/aiplatform.user` (`gemini-3.8-flash-tts` + Gemini LLM/VLM), `roles/datastore.user` (Firestore read/write), and `roles/storage.objectAdmin` (GCS upload).
-   - `agy -p` headless auth on Linux uses `AGY_ADC_AUTH=true` (validated in **Milestone 0**; Secret Manager OAuth bundle fallback if required by CLI backend).
+   - Video worker SA (`ai-news-video-worker`) gets `roles/aiplatform.user` (`gemini-3.8-flash-tts`), `roles/discoveryengine.agentspaceUser` (`AGY_ADC_AUTH=true` enterprise quota), `roles/datastore.user` (Firestore read/write), and `roles/storage.objectAdmin` (GCS upload).
+   - `agy -p` headless auth uses `AGY_ADC_AUTH=true`, `GOOGLE_CLOUD_QUOTA_PROJECT`, `GOOGLE_CLOUD_LOCATION=global`, `--model gemini-3.8-flash-medium`, and `--dangerously-skip-permissions` (verified live on Cloud Run Jobs in `16m 25s`; no `--mode auto`).
 4. **Lifecycle Retention**: GCS objects use a bucket lifecycle rule (e.g., 30–90 days auto-delete, configurable) matched with Firestore `TTL_DAYS` pointers.
 
 ---
@@ -33,6 +33,7 @@
 Automate the daily `09:00 Europe/Paris` generation of 6 bespoke, publication-grade AI news briefing videos (1 per category) using the **Antigravity Headless CLI (`agy -p`)** on **Cloud Run Jobs**, serving authenticated playback in the Next.js web app via server-signed GCS URLs and capturing critic + human feedback metadata in Firestore.
 
 ### User Stories
+
 1. **As a daily reader**, I want a ~60–95s narrated Swiss/Material 3 video briefing available for every category tab (`State of AI`, `AI Engineering`, `Frontier R&D`, `GenMedia`, `Ecosystem Analysis`, `Industry News`), delivered via secure signed playback URLs.
 2. **As a platform operator**, I want a single `0 9 * * * (Europe/Paris)` Cloud Scheduler trigger to spawn 6 parallel Cloud Run Job tasks (`tasks=6`), so one slow/failing category never blocks or times out the other 5.
 3. **As an editorial reviewer**, I want the latest rendered candidate published even when the automated critic still notes secondary polish opportunities (`criticVerdict: "needs_review"`), alongside a lightweight human feedback control in the UI so we can iteratively refine prompts/skills.
@@ -55,7 +56,7 @@ Automate the daily `09:00 Europe/Paris` generation of 6 bespoke, publication-gra
 ```bash
 # 0. Milestone 0 Auth Smoke Test inside Debian container
 docker build -f Dockerfile.video-worker -t ai-news-video-worker:dev .
-docker run --rm -e AGY_ADC_AUTH=true ai-news-video-worker:dev agy -p "Reply OK" --mode auto --dangerously-skip-permissions --output-format json
+docker run --rm -e AGY_ADC_AUTH=true -e GOOGLE_CLOUD_QUOTA_PROJECT=svc-demo-vertex -e GOOGLE_CLOUD_LOCATION=global ai-news-video-worker:dev agy -p "Reply OK" --model gemini-3.8-flash-medium --dangerously-skip-permissions --output-format json
 
 # 1. Local existing app checks (run after any code edits)
 npm run check
@@ -63,11 +64,11 @@ npm run lint
 npm run test
 
 # 2. Local single-category worker test (matches Cloud Run Job task #0 = "all")
-CLOUD_RUN_TASK_INDEX=0 DIGEST_ID=daily VIDEO_LOCAL_OUT=./tv/test-run npx tsx video-worker/entrypoint.ts
+CLOUD_RUN_TASK_INDEX=0 DIGEST_ID=daily VIDEO_LOCAL_OUT=./tv/test-run node video-worker/entrypoint.ts
 
 # 3. Inside worker: headless agy invocation executed per task
-agy -p "<task prompt pointing to /tmp/job/brief.json & skills>" \
-  --mode auto \
+AGY_ADC_AUTH=true GOOGLE_CLOUD_QUOTA_PROJECT=svc-demo-vertex GOOGLE_CLOUD_LOCATION=global agy -p "<task prompt pointing to /tmp/job/brief.json & skills>" \
+  --model gemini-3.8-flash-medium \
   --dangerously-skip-permissions \
   --print-timeout 600s \
   --output-format json \
@@ -128,30 +129,39 @@ Every integration point (`CloudRunJobsClient`, `AgyRunner`, `MediaNormalizer`, `
 
 ```typescript
 export const VIDEO_CATEGORIES = [
-  "all",                 // TASK_INDEX=0: State of AI
-  "ai-engineering",      // TASK_INDEX=1
-  "frontier-research",   // TASK_INDEX=2
-  "genmedia",            // TASK_INDEX=3
-  "ecosystem-analysis",  // TASK_INDEX=4
-  "industry-news",       // TASK_INDEX=5
-] as const;
+  "all", // TASK_INDEX=0: State of AI
+  "ai-engineering", // TASK_INDEX=1
+  "frontier-research", // TASK_INDEX=2
+  "genmedia", // TASK_INDEX=3
+  "ecosystem-analysis", // TASK_INDEX=4
+  "industry-news", // TASK_INDEX=5
+] as const
 
 export async function executeWorkerTask(
   taskIndex: number,
   dateStr: string,
   deps: VideoWorkerDeps
 ): Promise<VideoDocument> {
-  const category = VIDEO_CATEGORIES[taskIndex];
-  const digest = await deps.digestRepo.getDigest("daily", category);
-  const agyResult = await deps.agy.runHeadless(buildBrief(digest, category, dateStr));
+  const category = VIDEO_CATEGORIES[taskIndex]
+  const digest = await deps.digestRepo.getDigest("daily", category)
+  const agyResult = await deps.agy.runHeadless(buildBrief(digest, category, dateStr))
 
   // Hard technical invariants only; publish latest version even if critic status === "needs_review"
-  const { finalMp4, posterJpg, durationSec, lufs } = await deps.media.verifyAndMaster(agyResult.mp4Path, {
-    maxDurationSec: 120,
-    targetLufs: -16,
-  });
+  const { finalMp4, posterJpg, durationSec, lufs } = await deps.media.verifyAndMaster(
+    agyResult.mp4Path,
+    {
+      maxDurationSec: 120,
+      targetLufs: -16,
+    }
+  )
 
-  const gcsPaths = await deps.storage.uploadArtifacts({ dateStr, digestId: "daily", category, finalMp4, posterJpg });
+  const gcsPaths = await deps.storage.uploadArtifacts({
+    dateStr,
+    digestId: "daily",
+    category,
+    finalMp4,
+    posterJpg,
+  })
   return deps.videoRepo.saveReady({
     dateStr,
     digestId: "daily",
@@ -162,11 +172,12 @@ export async function executeWorkerTask(
     criticVerdict: agyResult.criticVerdict, // "OURS WINS" | "NEEDS_REVIEW"
     criticNotes: agyResult.criticNotes,
     criticRounds: agyResult.criticRounds,
-  });
+  })
 }
 ```
 
 ### Mandatory Rules Passed to `agy -p` via `daily-briefing.md`
+
 - Ground narration strictly in **every** insight in that category's Firestore daily digest (scraped full source paragraphs + verified images).
 - Author bespoke GSAP/SVG motion graphics matching [DESIGN.md](file:///Users/mblanc/projects/ai-news-front/DESIGN.md) (`18–24px` crisp vector labels instead of small blurry raster chart screenshots; opaque transitions with zero ghosting; full ink contrast on resting/active cards).
 - Use Google Cloud **`gemini-3.8-flash-tts`** (`Charon` voice, ADC auth) and keep total duration **`60–95s` (hard cap `120s`)**.

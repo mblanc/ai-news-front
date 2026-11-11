@@ -1,0 +1,35 @@
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    env:
+      - "DOCKER_BUILDKIT=1"
+    args:
+      - "build"
+      - "--build-arg"
+      - "BUILDKIT_INLINE_CACHE=1"
+      - "--cache-from"
+      - "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-news-video-worker:latest"
+      - "-f"
+      - "Dockerfile.video-worker"
+      - "-t"
+      - "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-news-video-worker:latest"
+      - "."
+  - name: "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-news-video-worker:latest"
+    dir: "/app"
+    env:
+      - "HOME=/home/nextjs"
+    entrypoint: "bash"
+    args:
+      - "-ec"
+      - |
+        ffmpeg -version | head -n 2
+        agy --version
+        agy mcp list
+        node --check /app/video-worker/scripts/vertex-tts.mjs
+        (cd /tmp && hyperframes --version)
+        tsx --version
+        tsx -e 'import { VIDEO_CATEGORIES } from "@/lib/video/types"; console.log("TSX_ALIAS_OK", VIDEO_CATEGORIES.length)'
+        ls -la /home/nextjs/.gemini/skills /home/nextjs/.gemini/agents/gauntlet-critic.md /app/video-worker/assets/fonts
+        node -e 'import("playwright-core").then(async ({chromium})=>{const b=await chromium.launch();await b.close();console.log("CHROMIUM_OK")})'
+
+images:
+  - "us-central1-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/ai-news-video-worker:latest"
